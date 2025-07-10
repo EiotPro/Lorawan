@@ -1,0 +1,23 @@
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "settings": {
+        "terminal.integrated.env.windows": {
+            "PATH": "${env:PATH};${workspaceFolder}\\.pio\\build"
+        },
+        "terminal.integrated.env.linux": {
+            "PATH": "${env:PATH}:${workspaceFolder}/.pio/build"
+        },
+        "terminal.integrated.env.osx": {
+            "PATH": "${env:PATH}:${workspaceFolder}/.pio/build"
+        }
+    },
+    "extensions": {
+        "recommendations": [
+            "platformio.platformio-ide"
+        ]
+    }
+} 
