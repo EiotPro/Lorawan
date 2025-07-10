@@ -1,46 +1,22 @@
 #include <Arduino.h>
-
-// --- WCS6800 Sensor Configuration ---
-// Connect WCS6800 VOUT to RPi Pico ADC pin (e.g., GP26)
-// Connect WCS6800 VCC to RPi Pico 3.3V
-// Connect WCS6800 GND to RPi Pico GND
-
-// ADC pin for WCS6800 output (GP26 corresponds to ADC0)
-#define ADC_PIN 26 // GPIO26 / ADC0
-
-// RPi Pico ADC has 12-bit resolution (0-4095)
-#define ADC_MAX_VALUE 4095.0
-
-// RPi Pico ADC reference voltage is 3.3V
-#define ADC_REF_VOLTAGE 3.3 // Volts
-
-// WCS6800 specifications (when powered by 3.3V)
-// Sensitivity: 42.9 mV/A (0.0429 V/A)
-// Output at 0A: 1.65V
-#define WCS6800_SENSITIVITY 0.0429 // V/A
-#define WCS6800_OFFSET_VOLTAGE 1.65 // Volts (Output at 0A current)
-
-// --- RAK3172 UART Communication Configuration ---
-// RPi Pico UART0 is connected to RAK3172 UART2 (as per schematic)
-// TX: GP0, RX: GP1
-#define UART_TX_PIN 0 // GP0 (connected to RAK3172 RX)
-#define UART_RX_PIN 1 // GP1 (connected to RAK3172 TX)
-#define UART_BAUDRATE 115200
+#include "config.h"
+#include "utils.h"
+#include "wifi_manager.h"
+#include "ble_manager.h"
+#include "ota_manager.h"
 
 // --- LoRaWAN ABP Configuration ---
-// Replace with your actual ABP credentials from ChirpStack
-const char* DevAdd = "01d3257c";  // Device Address from ChirpStack
-const char* NetKey = "06ebd62a3b4e2ed8d45d38d0f515988e";  // Network Session Key from ChirpStack
-const char* SessKey = "ef54ccd9b3d974e8736c60d916ad6e96";  // Application Session Key from ChirpStack
+const char* DevAdd = LORAWAN_DEV_ADDR;  // Device Address from ChirpStack
+const char* NetKey = LORAWAN_NWKS_KEY;  // Network Session Key from ChirpStack
+const char* SessKey = LORAWAN_APPS_KEY; // Application Session Key from ChirpStack
 
-// Setup LED and reset pin
-#define LED_PIN 25
-#define RST_PIN 30
+// Timers for various operations
+unsigned long lastMQTTPublish = 0;
+unsigned long lastBLEUpdate = 0;
+unsigned long lastLoRaTransmission = 0;
 
 // Function prototypes
 float readCurrent();
-void clearUartBuffer();
-bool sendATCommand(const char* command, const char* expectedResponse = "OK", int timeout = 5000);
 bool waitForModuleReady();
 bool initializeLoRaWAN();
 bool sendLoRaWANPayload(float currentValue);
@@ -49,9 +25,9 @@ bool listenForDownlink();
 void setup() {
   // Initialize serial communication
   Serial.begin(115200);
+  while (!Serial && millis() < 3000); // Wait for Serial for up to 3 seconds
   
   // Initialize Serial1 with specified baud rate
-  // The PIN_SERIAL1_TX and PIN_SERIAL1_RX are defined in platformio.ini
   Serial1.begin(UART_BAUDRATE);
   
   // Initialize pins
@@ -62,43 +38,128 @@ void setup() {
   // Initialize ADC
   analogReadResolution(12); // Set ADC resolution to 12-bit
   
-  Serial.println("==========================================================");
-  Serial.println("WCS6800 Current Sensor LoRaWAN Monitor");
-  Serial.println("==========================================================");
-  Serial.print("UART: TX=GP"); Serial.print(UART_TX_PIN);
-  Serial.print(", RX=GP"); Serial.print(UART_RX_PIN);
-  Serial.print(" @ "); Serial.print(UART_BAUDRATE); Serial.println(" baud");
-  Serial.print("ADC: WCS6800 on GP"); Serial.println(ADC_PIN);
-  Serial.print("Device Address: "); Serial.println(DevAdd);
-  Serial.println("==========================================================");
+  log_info("==========================================================");
+  log_info("WCS6800 Current Sensor LoRaWAN Monitor");
+  log_info("==========================================================");
+  log_format(LOG_INFO, "UART: TX=GP%d, RX=GP%d @ %d baud", UART_TX_PIN, UART_RX_PIN, UART_BAUDRATE);
+  log_format(LOG_INFO, "ADC: WCS6800 on GP%d", ADC_PIN);
+  log_format(LOG_INFO, "Device Address: %s", DevAdd);
+  log_info("==========================================================");
+  
+  // Run diagnostics
+  if (!runFullDiagnostics()) {
+    log_error("Hardware diagnostics failed, continuing with caution");
+  }
+  
+  // Initialize WiFi if enabled
+  if (WIFI_ENABLED) {
+    if (setupWiFi()) {
+      log_info("WiFi initialized successfully");
+    } else {
+      log_error("WiFi initialization failed");
+    }
+  }
+  
+  // Initialize BLE if enabled
+  if (BLE_ENABLED) {
+    if (setupBLE()) {
+      log_info("BLE initialized successfully");
+    } else {
+      log_error("BLE initialization not available on this hardware");
+    }
+  }
+  
+  // Initialize OTA if enabled
+  if (OTA_ENABLED) {
+    if (setupOTA()) {
+      log_info("OTA update system initialized successfully");
+    } else {
+      log_error("OTA initialization failed");
+    }
+  }
   
   // Initialize LoRaWAN
   if (!initializeLoRaWAN()) {
-    Serial.println("FATAL ERROR: LoRaWAN initialization failed");
+    log_error("FATAL ERROR: LoRaWAN initialization failed");
+    handleError(ERR_LORAWAN_INIT);
     return;
   }
   
-  Serial.println("Starting main monitoring loop...");
+  log_info("Starting main monitoring loop...");
+  lastLoRaTransmission = millis(); // Initialize the last transmission time
 }
 
 void loop() {
-  // Read current from sensor
-  float currentVal = readCurrent();
-  Serial.print("\nCurrent Reading: ");
-  Serial.print(currentVal, 3);
-  Serial.println(" A");
-  
-  // Send data via LoRaWAN
-  if (sendLoRaWANPayload(currentVal)) {
-    // Listen for downlink commands
-    listenForDownlink();
-  } else {
-    Serial.println("Skipping downlink listen due to send failure");
+  // Handle WiFi events
+  if (WIFI_ENABLED) {
+    handleWiFiEvents();
   }
   
-  // Wait before next transmission
-  Serial.println("Waiting 60 seconds before next transmission...");
-  delay(60000);
+  // Handle BLE events
+  if (BLE_ENABLED) {
+    handleBLEEvents();
+  }
+  
+  // Handle OTA events
+  if (OTA_ENABLED) {
+    handleOTAEvents();
+    
+    // If OTA is in progress, skip the regular monitoring
+    if (getOTAStatus() != OTA_STATUS_IDLE) {
+      delay(100);
+      return;
+    }
+  }
+  
+  // Read current from sensor
+  float currentVal = readCurrent();
+  
+  // Check if it's time to transmit via LoRaWAN
+  unsigned long currentTime = millis();
+  if (currentTime - lastLoRaTransmission >= TX_INTERVAL) {
+    log_format(LOG_INFO, "\nCurrent Reading: %.3f A", currentVal);
+    
+    // Format data as JSON for dashboard integration
+    String jsonData = formatCurrentAsJson(currentVal);
+    
+    // Update BLE characteristic if connected and enough time has passed
+    if (BLE_ENABLED && (currentTime - lastBLEUpdate > BLE_TX_INTERVAL)) {
+      updateBLECurrentValue(currentVal);
+      lastBLEUpdate = currentTime;
+    }
+    
+    // Publish to MQTT if enabled and enough time has passed
+    if (WIFI_ENABLED && MQTT_ENABLED && (currentTime - lastMQTTPublish > WIFI_TX_INTERVAL)) {
+      publishCurrentData(currentVal);
+      lastMQTTPublish = currentTime;
+    }
+    
+    // Send data via LoRaWAN
+    if (sendLoRaWANPayload(currentVal)) {
+      // Listen for downlink commands
+      listenForDownlink();
+    } else {
+      log_info("Skipping downlink listen due to send failure");
+      handleError(ERR_LORAWAN_SEND);
+    }
+    
+    lastLoRaTransmission = currentTime;
+  }
+  
+  // Process more frequent updates for WiFi/BLE without LoRaWAN transmissions
+  // to avoid overloading the network
+  if (WIFI_ENABLED && MQTT_ENABLED && (currentTime - lastMQTTPublish > WIFI_TX_INTERVAL)) {
+    publishCurrentData(currentVal);
+    lastMQTTPublish = currentTime;
+  }
+  
+  if (BLE_ENABLED && (currentTime - lastBLEUpdate > BLE_TX_INTERVAL)) {
+    updateBLECurrentValue(currentVal);
+    lastBLEUpdate = currentTime;
+  }
+  
+  // Short delay to prevent tight loop
+  delay(100);
 }
 
 float readCurrent() {
@@ -115,46 +176,8 @@ float readCurrent() {
   return current;
 }
 
-void clearUartBuffer() {
-  delay(100);
-  while (Serial1.available()) {
-    Serial1.read();
-  }
-}
-
-bool sendATCommand(const char* command, const char* expectedResponse, int timeout) {
-  clearUartBuffer();
-  
-  Serial1.print(command);
-  Serial1.print("\r\n");
-  Serial.print("Sending command: ");
-  Serial.println(command);
-  
-  unsigned long startTime = millis();
-  String response = "";
-  
-  while ((millis() - startTime) < (unsigned long)timeout) {
-    if (Serial1.available()) {
-      char c = Serial1.read();
-      response += c;
-      Serial.print(c);
-      
-      // Check if we got the expected response
-      if (response.indexOf(expectedResponse) != -1) {
-        return true;
-      }
-    }
-    delay(10);
-  }
-  
-  Serial.print("Timeout waiting for '");
-  Serial.print(expectedResponse);
-  Serial.println("' response");
-  return false;
-}
-
 bool waitForModuleReady() {
-  Serial.println("Waiting for RAK3172 module to be ready...");
+  log_info("Waiting for RAK3172 module to be ready...");
   
   // Clear any boot messages
   delay(3000);
@@ -163,28 +186,26 @@ bool waitForModuleReady() {
   // Try to get a response to basic AT command
   int maxAttempts = 5;
   for (int attempt = 0; attempt < maxAttempts; attempt++) {
-    Serial.print("Attempt ");
-    Serial.print(attempt + 1);
-    Serial.println(" to communicate with module...");
+    log_format(LOG_INFO, "Attempt %d to communicate with module...", attempt + 1);
     
     if (sendATCommand("AT", "OK", 3000)) {
-      Serial.println("Module is ready!");
+      log_info("Module is ready!");
       return true;
     }
     
     delay(1000);
   }
   
-  Serial.println("Failed to communicate with module after multiple attempts");
+  log_error("Failed to communicate with module after multiple attempts");
   return false;
 }
 
 bool initializeLoRaWAN() {
-  Serial.println("Initializing LoRaWAN ABP mode...");
+  log_info("Initializing LoRaWAN ABP mode...");
   
   // Wait for module to be ready
   if (!waitForModuleReady()) {
-    Serial.println("ERROR: Module not responding to AT commands");
+    log_error("ERROR: Module not responding to AT commands");
     return false;
   }
   
@@ -208,48 +229,45 @@ bool initializeLoRaWAN() {
   
   // Execute basic commands
   for (int i = 0; i < 3; i++) {
-    Serial.print("Setting ");
-    Serial.print(commands[i].description);
-    Serial.println("...");
+    log_format(LOG_INFO, "Setting %s...", commands[i].description);
     if (!sendATCommand(commands[i].command, "OK", 3000)) {
-      Serial.print("ERROR: Failed to set ");
-      Serial.println(commands[i].description);
+      log_format(LOG_ERROR, "ERROR: Failed to set %s", commands[i].description);
       return false;
     }
     delay(500);
   }
   
   // Set device address
-  Serial.println("Setting device address...");
+  log_info("Setting device address...");
   if (!sendATCommand(devAddrCmd.c_str(), "OK", 3000)) {
-    Serial.println("ERROR: Failed to set device address");
+    log_error("ERROR: Failed to set device address");
     return false;
   }
   delay(500);
   
   // Set app session key
-  Serial.println("Setting app session key...");
+  log_info("Setting app session key...");
   if (!sendATCommand(appSKeyCmd.c_str(), "OK", 3000)) {
-    Serial.println("ERROR: Failed to set app session key");
+    log_error("ERROR: Failed to set app session key");
     return false;
   }
   delay(500);
   
   // Set network session key
-  Serial.println("Setting network session key...");
+  log_info("Setting network session key...");
   if (!sendATCommand(nwkSKeyCmd.c_str(), "OK", 3000)) {
-    Serial.println("ERROR: Failed to set network session key");
+    log_error("ERROR: Failed to set network session key");
     return false;
   }
   delay(500);
   
   // Join the network
-  Serial.println("Joining LoRaWAN network...");
+  log_info("Joining LoRaWAN network...");
   if (sendATCommand("AT+JOIN", "OK", 10000)) {
-    Serial.println("LoRaWAN initialized and joined successfully!");
+    log_info("LoRaWAN initialized and joined successfully!");
     return true;
   } else {
-    Serial.println("ERROR: Failed to join LoRaWAN network");
+    log_error("ERROR: Failed to join LoRaWAN network");
     return false;
   }
 }
@@ -281,23 +299,19 @@ bool sendLoRaWANPayload(float currentValue) {
   
   // Send LoRaWAN uplink using AT+SEND command
   String command = "AT+SEND=2:" + hexPayload;
-  Serial.print("Sending payload: ");
-  Serial.print(hexPayload);
-  Serial.print(" (Current: ");
-  Serial.print(currentValue, 3);
-  Serial.println("A)");
+  log_format(LOG_INFO, "Sending payload: %s (Current: %.3f A)", hexPayload.c_str(), currentValue);
   
   if (sendATCommand(command.c_str(), "OK", 10000)) {
-    Serial.println("Payload sent successfully");
+    log_info("Payload sent successfully");
     return true;
   } else {
-    Serial.println("ERROR: Failed to send payload");
+    log_error("ERROR: Failed to send payload");
     return false;
   }
 }
 
 bool listenForDownlink() {
-  Serial.println("Listening for downlink messages...");
+  log_info("Listening for downlink messages...");
   int timeoutCount = 0;
   int maxTimeout = 15000; // Wait up to 15 seconds for downlink
   
@@ -305,12 +319,11 @@ bool listenForDownlink() {
     if (Serial1.available()) {
       String downlinkData = Serial1.readString();
       downlinkData.trim();
-      Serial.print("Received: ");
-      Serial.println(downlinkData);
+      log_format(LOG_INFO, "Received: %s", downlinkData.c_str());
       
       // Check for transmission done event
       if (downlinkData.indexOf("+EVT:TX_DONE") != -1) {
-        Serial.println("Uplink transmission confirmed");
+        log_info("Uplink transmission confirmed");
       }
       
       // Check for downlink event
@@ -320,18 +333,25 @@ bool listenForDownlink() {
         if (lastColonIndex != -1) {
           String payload = downlinkData.substring(lastColonIndex + 1);
           payload.trim();
-          Serial.print("Downlink payload: ");
-          Serial.println(payload);
+          log_format(LOG_INFO, "Downlink payload: %s", payload.c_str());
           
-          // Process LED commands
+          // Process commands
           if (payload == "01") {
-            Serial.println("LED ON command received");
+            log_info("LED ON command received");
             digitalWrite(LED_PIN, HIGH);
           } else if (payload == "02") {
-            Serial.println("LED OFF command received");
+            log_info("LED OFF command received");
             digitalWrite(LED_PIN, LOW);
+          } else if (payload == "03") {
+            log_info("OTA UPDATE command received");
+            if (OTA_ENABLED && WIFI_ENABLED) {
+              log_info("Triggering WiFi OTA update");
+              triggerOTAUpdate(OTA_METHOD_WIFI);
+            } else {
+              log_error("OTA updates are disabled in config or WiFi is not available");
+            }
           } else if (payload == "04") {
-            Serial.println("LED BLINK command received");
+            log_info("LED BLINK command received");
             for (int i = 0; i < 3; i++) { // Blink 3 times
               digitalWrite(LED_PIN, HIGH);
               delay(300);
@@ -339,8 +359,7 @@ bool listenForDownlink() {
               delay(300);
             }
           } else {
-            Serial.print("Unknown command: ");
-            Serial.println(payload);
+            log_format(LOG_INFO, "Unknown command: %s", payload.c_str());
           }
         }
         return true;
@@ -351,6 +370,6 @@ bool listenForDownlink() {
     timeoutCount += 100;
   }
   
-  Serial.println("No downlink received within timeout period");
+  log_info("No downlink received within timeout period");
   return false;
 } 
