@@ -2,166 +2,172 @@
 
 ## Overview
 
-The WCS6800 LoRa Current Sensor system includes a debug mode that provides detailed logging information during operation. This helps with troubleshooting, development, and understanding the system's behavior.
+The WCS6800 LoRa Current Sensor system includes debug messages that provide detailed logging information during operation. This helps with troubleshooting, development, and understanding the system's behavior.
 
-## Enabling/Disabling Debug Mode
+## Monitoring Debug Output
 
-Debug mode is controlled by a single boolean flag at the top of the `Pico_Wcs6800.py` file:
+The Arduino implementation sends debug information through the Serial interface, which can be monitored using the Arduino IDE's Serial Monitor.
 
-```python
-# --- Debug Configuration ---
-DEBUG = True  # Set to False to disable debug print statements
-```
+### How to Access Debug Output
 
-- When `DEBUG = True`: Detailed logging is displayed
-- When `DEBUG = False`: Only essential information and errors are displayed
+1. Connect the Raspberry Pi Pico to your computer via USB
+2. Open the Arduino IDE
+3. Open the Serial Monitor (Tools > Serial Monitor)
+4. Set the baud rate to 115200
+5. Observe the debug messages in real-time
 
 ## Debug Output Categories
 
-When debug mode is enabled, the following additional information is logged:
+The system outputs the following information categories:
 
 ### 1. Hardware Readings
-- ADC raw values
-- Voltage readings
-- Detailed current calculations
+- Current values from the sensor
+- Derived voltage readings
 
 ### 2. UART Communication
-- Bytes cleared from UART buffer
-- Full response data from RAK3172
-- Command success confirmations
+- AT commands sent to the RAK3172
+- Raw responses from the RAK3172
+- Command timeout information
 
 ### 3. Module Initialization
-- Individual module initialization attempts
-- Parameter setting details
+- Module readiness checks
+- Individual parameter setting status
+- Network join status
 
 ### 4. Data Processing
-- Value range limits and adjustments
-- Raw data reception details
+- Payload formatting details
+- Value range checks and adjustments
+- Data transmission confirmations
 
 ### 5. System Operation
-- Measurement cycle tracking
-- Wait period progress
-- LED test sequence execution
+- System initialization information
+- Wait period notifications
+- Error conditions
 
 ## Sample Debug Output
 
-With debug mode enabled, you'll see output similar to:
+With the system running, you'll see output similar to:
 
 ```
-===============================================================
+==========================================================
 WCS6800 Current Sensor LoRaWAN Monitor
-===============================================================
-Debug mode: Enabled
+==========================================================
 UART: TX=GP0, RX=GP1 @ 115200 baud
 ADC: WCS6800 on GP26
 Device Address: 01d3257c
-LED Indicators: Red=GP5, Blue=GP0, Green=GP3
-===============================================================
-Running LED test sequence
+==========================================================
 Initializing LoRaWAN ABP mode...
 Waiting for RAK3172 module to be ready...
 Attempt 1 to communicate with module...
 Sending command: AT
-Response: AT
+AT
 OK
 
-Command successful, found 'OK'
 Module is ready!
 Setting ABP mode...
 Sending command: AT+NJM=0
-Response: AT+NJM=0
+AT+NJM=0
 OK
 
-Command successful, found 'OK'
-[...additional initialization details...]
+Setting Class C...
+Sending command: AT+CLASS=C
+AT+CLASS=C
+OK
+
+Setting IN865 region...
+Sending command: AT+BAND=3
+AT+BAND=3
+OK
+
+Setting device address...
+Sending command: AT+DEVADDR=01d3257c
+AT+DEVADDR=01d3257c
+OK
+
+Setting app session key...
+Sending command: AT+APPSKEY=ef54ccd9b3d974e8736c60d916ad6e96
+AT+APPSKEY=ef54ccd9b3d974e8736c60d916ad6e96
+OK
+
+Setting network session key...
+Sending command: AT+NWKSKEY=06ebd62a3b4e2ed8d45d38d0f515988e
+AT+NWKSKEY=06ebd62a3b4e2ed8d45d38d0f515988e
+OK
+
+Joining LoRaWAN network...
+Sending command: AT+JOIN
+AT+JOIN
+OK
+
 LoRaWAN initialized and joined successfully!
 Starting main monitoring loop...
 
---- Measurement cycle #1 ---
-ADC raw: 2048, Voltage: 1.650V, Current: 0.000A
+Current Reading: 0.125 A
+Sending payload: 007D (Current: 0.125A)
+Sending command: AT+SEND=2:007D
+AT+SEND=2:007D
+OK
 
-Current Reading: 0.000 A
-Sending payload: 0000 (Current: 0.000A)
-[...transmission details...]
 Payload sent successfully
-Waiting for downlink... 5/15s
-Waiting for downlink... 10/15s
+Listening for downlink messages...
 No downlink received within timeout period
 Waiting 60 seconds before next transmission...
-Wait period 10/60 seconds
-Wait period 20/60 seconds
-[...and so on...]
 ```
 
-## Regular (Non-Debug) Output
+## Error Messages
 
-When debug mode is disabled, only essential information is displayed:
+The system will output clear error messages when issues occur:
 
 ```
-===============================================================
-WCS6800 Current Sensor LoRaWAN Monitor
-===============================================================
-Debug mode: Disabled
-UART: TX=GP0, RX=GP1 @ 115200 baud
-ADC: WCS6800 on GP26
-Device Address: 01d3257c
-LED Indicators: Red=GP5, Blue=GP0, Green=GP3
-===============================================================
-Initializing LoRaWAN ABP mode...
-Waiting for RAK3172 module to be ready...
-Sending command: AT
-Module is ready!
-Joining LoRaWAN network...
-LoRaWAN initialized and joined successfully!
-Starting main monitoring loop...
-
-Current Reading: 0.000 A
-Sending payload: 0000 (Current: 0.000A)
-Payload sent successfully
-Waiting 60 seconds before next transmission...
+ERROR: Failed to communicate with module after multiple attempts
+ERROR: Failed to set ABP mode
+ERROR: Failed to join LoRaWAN network
+ERROR: Failed to send payload
+Timeout waiting for 'OK' response
 ```
 
-## Always-Displayed Information
+## Customizing Debug Output
 
-Regardless of debug mode, the following information is always displayed:
+To add additional debug information:
 
-1. **Critical system status**:
-   - Startup banner and configuration
-   - LoRaWAN connection status
-   - Main loop start
+1. Insert additional `Serial.print()` or `Serial.println()` statements in the code
+2. Focus on critical areas such as:
+   - Sensor reading calculations
+   - Data encoding processes
+   - Command response parsing
 
-2. **Operational data**:
-   - Current readings (in Amperes)
-   - Payload transmission status
-   - Wait period notifications
+For example:
+```cpp
+// Add detailed sensor reading debug
+float readCurrent() {
+  int adcValue = analogRead(ADC_PIN);
+  Serial.print("Raw ADC: ");
+  Serial.println(adcValue);
+  
+  float voltage = (float(adcValue) / ADC_MAX_VALUE) * ADC_REF_VOLTAGE;
+  Serial.print("Voltage: ");
+  Serial.print(voltage, 3);
+  Serial.println("V");
+  
+  float current = (voltage - WCS6800_OFFSET_VOLTAGE) / WCS6800_SENSITIVITY;
+  return current;
+}
+```
 
-3. **Error conditions**:
-   - UART errors
-   - Module communication failures
-   - LoRaWAN join failures
-   - Main loop exceptions
-
-## Using Debug Mode for Development
+## Using Serial Output for Development
 
 When developing or modifying the system:
 
-1. **Initial Setup**: Start with `DEBUG = True` to see detailed operation
-2. **Troubleshooting**: Keep debug enabled to diagnose problems
-3. **Normal Operation**: Set to `DEBUG = False` for cleaner output
-4. **Production Deployment**: Always set to `DEBUG = False` to minimize resource usage and improve performance
+1. **Initial Setup**: Monitor all communications to verify proper operation
+2. **Troubleshooting**: Look for error messages and unexpected values
+3. **Normal Operation**: Focus on current readings and transmission status
+4. **Integration Testing**: Verify downlink command reception and processing
 
 ## Impact on System Performance
 
-With debug mode enabled:
-- Increased memory usage due to string formatting
-- Slightly higher power consumption due to additional UART usage
+With extensive serial output:
+- Increased program size due to string constants
+- Slightly higher power consumption due to serial communication
 - Potential timing impacts due to longer processing for print statements
 
-## Additional Debug Tools
-
-In addition to the debug print statements, the system provides visual debugging through the LED indicators:
-
-- **Red LED**: Module communication status and errors
-- **Blue LED**: Data transmission activity
-- **Green LED**: System status and operational state
-- **On-board LED**: Downlink command reception 
+For production deployment with battery power, consider limiting serial output to essential information only. 

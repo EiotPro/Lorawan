@@ -4,13 +4,14 @@
 
 Before setting up the system, ensure you have the following:
 
-1. Raspberry Pi Pico with MicroPython installed
+1. Raspberry Pi Pico with Arduino support installed
 2. WCS6800 Current Sensor
 3. RAK3172 LoRaWAN Module
-4. Three LEDs (Red, Green, Blue) with appropriate current-limiting resistors
+4. LED (optional for visual feedback)
 5. Jumper wires and breadboard
 6. Micro USB cable for programming and power
 7. Access to a ChirpStack LoRaWAN server and gateway
+8. Arduino IDE with Raspberry Pi Pico board support
 
 ## Hardware Assembly
 
@@ -26,27 +27,25 @@ Before setting up the system, ensure you have the following:
 2. Connect RAK3172 GND to Raspberry Pi Pico GND
 3. Connect RAK3172 TX to Raspberry Pi Pico GPIO 1 (UART0 RX)
 4. Connect RAK3172 RX to Raspberry Pi Pico GPIO 0 (UART0 TX)
-5. Connect RAK3172 RESET to Raspberry Pi Pico GPIO 2
+5. Connect RAK3172 RESET to Raspberry Pi Pico GPIO 30
 
-### Step 3: Connect LED Indicators
+### Step 3: Connect LED Indicator (Optional)
 
-1. **Red LED**:
-   - Connect anode through a 220Ω resistor to GPIO 5
-   - Connect cathode to GND
-
-2. **Blue LED**:
-   - Connect anode through a 220Ω resistor to GPIO 0
-   - Connect cathode to GND
-
-3. **Green LED**:
-   - Connect anode through a 220Ω resistor to GPIO 3
-   - Connect cathode to GND
-
-> **Note**: The blue LED shares GPIO 0 with UART0 TX, so it will illuminate during UART transmission. This serves as a visual indicator for communication with the RAK3172 module.
+The on-board LED (GPIO 25) is used for visual feedback from downlink commands. No additional connection is required for this LED.
 
 ## Software Setup
 
-### Step 1: Set Up ChirpStack Server
+### Step 1: Set Up Arduino IDE
+
+1. Install the Arduino IDE from [arduino.cc](https://www.arduino.cc/en/software)
+2. Add Raspberry Pi Pico board support to Arduino IDE:
+   - Open Arduino IDE
+   - Go to File > Preferences
+   - Add this URL to "Additional Boards Manager URLs": `https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json`
+   - Go to Tools > Board > Boards Manager
+   - Search for "Raspberry Pi Pico" and install the board package
+
+### Step 2: Set Up ChirpStack Server
 
 1. Register a new device in ChirpStack with ABP activation
 2. Note down the following credentials:
@@ -56,18 +55,18 @@ Before setting up the system, ensure you have the following:
 3. Ensure the codec functions are applied to your application in ChirpStack:
    - Upload the `Chirpstack_codec.js` file to your ChirpStack application
 
-### Step 2: Configure the Pico Code
+### Step 3: Configure the Arduino Code
 
-1. Open the `Pico_Wcs6800.py` file
+1. Open the `Pico_WCS6800.ino` file in Arduino IDE
 2. Update the LoRaWAN ABP configuration with your device credentials:
-   ```python
-   DevAdd = "01d3257c"  # Replace with your Device Address
-   NetKey = "06ebd62a3b4e2ed8d45d38d0f515988e"  # Replace with your Network Session Key
-   SessKey = "ef54ccd9b3d974e8736c60d916ad6e96"  # Replace with your Application Session Key
+   ```cpp
+   const char* DevAdd = "01d3257c";  // Replace with your Device Address
+   const char* NetKey = "06ebd62a3b4e2ed8d45d38d0f515988e";  // Replace with your Network Session Key
+   const char* SessKey = "ef54ccd9b3d974e8736c60d916ad6e96";  // Replace with your Application Session Key
    ```
-3. If needed, adjust the region setting in the `initialize_lorawan()` function:
-   ```python
-   ("AT+BAND=3", "IN865 region"),  # Change to your region's code
+3. If needed, adjust the region setting in the `initializeLoRaWAN()` function:
+   ```cpp
+   {"AT+BAND=3", "IN865 region"},  // Change to your region's code
    ```
    Region codes:
    - EU868: 0
@@ -80,12 +79,15 @@ Before setting up the system, ensure you have the following:
    - AS923-3: 7
    - AS923-4: 8
 
-### Step 3: Upload Code to Raspberry Pi Pico
+### Step 4: Upload Code to Raspberry Pi Pico
 
 1. Connect the Raspberry Pi Pico to your computer via USB
 2. Press and hold the BOOTSEL button while connecting to enter programming mode
-3. Copy the `Pico_Wcs6800.py` file to the Pico (rename to `main.py` if you want it to run automatically)
-4. Safely eject the Pico and reset it
+3. In Arduino IDE:
+   - Select the appropriate board (Raspberry Pi Pico)
+   - Select the correct port
+   - Click the Upload button
+4. Once uploaded, the Pico will restart and run the program automatically
 
 ## Testing the System
 
@@ -93,10 +95,14 @@ Before setting up the system, ensure you have the following:
 
 When the system powers up, you should observe:
 
-1. All LEDs will briefly flash once in sequence
-2. The red LED will illuminate while waiting for the RAK3172 module
-3. The green LED will illuminate during LoRaWAN initialization
-4. If initialization is successful, the green LED will remain on
+1. Serial monitor output showing initialization
+2. Connection attempts to the RAK3172 module
+3. Successful LoRaWAN network join messages
+
+To view debug information:
+1. Open the Serial Monitor in Arduino IDE
+2. Set the baud rate to 115200
+3. Monitor the initialization and operational messages
 
 ### Verifying LoRaWAN Communication
 
@@ -109,24 +115,22 @@ When the system powers up, you should observe:
 
 ## Troubleshooting
 
-### LED Status Indicators
+### Common Issues
 
-Use the LED indicators to diagnose common issues:
-
-| Issue | LED Behavior | Troubleshooting |
-|-------|-------------|----------------|
-| Module initialization failure | Red LED flashing rapidly at startup | Check RAK3172 connections and power |
-| Network join failure | No green LED after initialization | Verify credentials and gateway coverage |
-| UART communication issues | Blue LED stays on for extended periods | Check UART connections and baud rate |
-| Main loop error | Red LED flashing during operation | Check serial output for error messages |
-| System crash | No LED activity | Check power supply and connections |
+| Issue | Symptoms | Troubleshooting |
+|-------|----------|----------------|
+| Module initialization failure | "Failed to communicate with module" message | Check RAK3172 connections and power |
+| Network join failure | "Failed to join LoRaWAN network" message | Verify credentials and gateway coverage |
+| UART communication issues | Timeout messages for AT commands | Check UART connections and baud rate |
+| Main loop error | Error messages during operation | Check serial output for specific error details |
+| System crash | No serial output | Check power supply and connections |
 
 ### Serial Output
 
-Connect to the Pico's USB serial port (typically 115200 baud) to view debug messages:
+Connect to the Pico's USB serial port (115200 baud) to view debug messages:
 
 1. Messages beginning with "Sending command:" show AT commands sent to RAK3172
-2. Messages beginning with "Response:" show RAK3172 replies
+2. Response data from RAK3172 is displayed directly
 3. Current readings are displayed every measurement cycle
 4. Error messages will be prefixed with "ERROR:"
 
@@ -146,16 +150,11 @@ The system can be powered in several ways:
 
 To change how often measurements are taken and transmitted:
 
-1. Locate the main loop wait period at the end of the `main()` function
-2. Modify the sleep time and LED pulse count:
-   ```python
-   # For a 30-second interval instead of 60 seconds
-   print(f"Waiting 30 seconds before next transmission...")
-   for _ in range(3):  # 3 pulses of 10 seconds each
-       green_led.value(1)
-       time.sleep(1)
-       green_led.value(0)
-       time.sleep(9)
+1. Locate the delay at the end of the `loop()` function
+2. Modify the delay time:
+   ```cpp
+   // For a 30-second interval instead of 60 seconds
+   delay(30000);
    ```
 
 ### Calibrating the Current Sensor
@@ -163,9 +162,9 @@ To change how often measurements are taken and transmitted:
 If the current readings seem inaccurate:
 
 1. Adjust the WCS6800 sensitivity and offset voltage constants:
-   ```python
-   WCS6800_SENSITIVITY = 0.0429  # V/A (may need calibration)
-   WCS6800_OFFSET_VOLTAGE = 1.65  # Volts (may vary by sensor)
+   ```cpp
+   #define WCS6800_SENSITIVITY 0.0429 // V/A (may need calibration)
+   #define WCS6800_OFFSET_VOLTAGE 1.65 // Volts (may vary by sensor)
    ```
 2. Measure the actual output voltage at 0A current and adjust the offset
 3. Apply a known current and adjust the sensitivity for accurate readings
@@ -177,7 +176,7 @@ If the current readings seem inaccurate:
 To use Over-The-Air Activation instead of ABP:
 
 1. Obtain DevEUI, AppEUI, and AppKey from ChirpStack
-2. Modify the `initialize_lorawan()` function to use OTAA parameters
+2. Modify the `initializeLoRaWAN()` function to use OTAA parameters
 3. Update the ChirpStack codec as needed for OTAA operation
 
 ### Adding Additional Sensors

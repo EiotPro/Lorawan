@@ -7,18 +7,16 @@ This project implements a current sensing system using a WCS6800 current sensor 
 ## Hardware Components
 
 ### Core Components
-- **Raspberry Pi Pico**: Microcontroller running MicroPython
+- **Raspberry Pi Pico**: Microcontroller running Arduino
 - **WCS6800**: AC/DC Current Sensor
 - **RAK3172**: LoRaWAN Module
 
 ### I/O Connections
 - **GPIO 26 (ADC0)**: Connected to WCS6800 VOUT (Analog Input)
-- **GPIO 0 (UART0 TX)**: Connected to RAK3172 RX - Blue LED indicator
+- **GPIO 0 (UART0 TX)**: Connected to RAK3172 RX
 - **GPIO 1 (UART0 RX)**: Connected to RAK3172 TX
-- **GPIO 5 (UART1 RX)**: Red LED indicator
-- **GPIO 3**: Status (Green LED indicator)
-- **GPIO 2**: RAK3172 Reset pin
-- **On-board LED (GPIO 25)**: Used for downlink command visual feedback
+- **GPIO 25**: On-board LED used for downlink command visual feedback
+- **GPIO 30**: RAK3172 Reset pin
 
 ### Power Connections
 - WCS6800 VCC: Connected to RPi Pico 3.3V
@@ -26,20 +24,20 @@ This project implements a current sensing system using a WCS6800 current sensor 
 
 ## Software Architecture
 
-### MicroPython Component (Pico_Wcs6800.py)
+### Arduino Component (Pico_WCS6800.ino)
 
 #### Configuration
 - **ADC Configuration**: Setup for reading WCS6800 sensor on GPIO 26
-- **UART Configuration**: Setup for communication with RAK3172 on UART0 (GPIO 0,1)
+- **UART Configuration**: Setup for communication with RAK3172 on Software Serial (GPIO 0,1)
 - **LoRaWAN ABP Configuration**: Device credentials for ChirpStack
 
 #### Key Functions
-1. **read_current()**: Reads and calculates current from the WCS6800 sensor
-2. **send_at_command()**: Handles UART communication with the RAK3172
-3. **initialize_lorawan()**: Sets up LoRaWAN in ABP mode
-4. **send_lorawan_payload()**: Encodes and sends current data via LoRaWAN
-5. **listen_for_downlink()**: Processes incoming commands from LoRaWAN network
-6. **main()**: Main program loop
+1. **readCurrent()**: Reads and calculates current from the WCS6800 sensor
+2. **sendATCommand()**: Handles UART communication with the RAK3172
+3. **initializeLoRaWAN()**: Sets up LoRaWAN in ABP mode
+4. **sendLoRaWANPayload()**: Encodes and sends current data via LoRaWAN
+5. **listenForDownlink()**: Processes incoming commands from LoRaWAN network
+6. **setup() and loop()**: Standard Arduino program structure
 
 #### Data Flow
 1. Read analog value from WCS6800 sensor
@@ -83,55 +81,17 @@ This project implements a current sensing system using a WCS6800 current sensor 
 ## LED Indicators
 
 ### LED Physical Assignment
-- **Red LED (GPIO 5/UART1 RX)**: Indicates module readiness and downlink reception
-- **Blue LED (GPIO 0/UART0 TX)**: Indicates ongoing data transmission
-- **Green LED (GPIO 3)**: System status indicator
-- **On-board LED**: Controlled via downlink commands
+- **GPIO 25 (On-board LED)**: Controlled via downlink commands
 
 ### LED Behavior Patterns
 
 #### System Startup
-- **All LEDs**: Briefly flash once in sequence during initialization
-  - Confirms LEDs are functioning properly
-  - Visual indication of power-on
-
-#### Red LED Patterns
-- **Solid On**: System is waiting for RAK3172 module to be ready
-- **Solid On (Later)**: System is listening for downlink messages
-- **Rapid Flashing (5 times)**: LoRaWAN initialization failure
-- **Rapid Flashing (3 times)**: Error occurred in main loop
-
-#### Blue LED Patterns
-- **Solid On**: UART transmission in progress (sending AT command)
-- **Off**: No active transmission
-- **Automatic Control**: Turns on during LoRaWAN payload transmission and automatically turns off when completed
-
-#### Green LED Patterns
-- **Solid On**: During LoRaWAN initialization
-- **Stays On**: LoRaWAN network successfully joined
-- **Turns Off**: Failed to join LoRaWAN network
-- **Pulsing (1s on, 9s off)**: System is in waiting period between transmissions
+- System initialization information displayed on serial monitor
 
 #### On-board LED Patterns (Controlled via Downlink)
 - **Solid On**: Command 0x01 received
 - **Off**: Command 0x02 received
 - **Triple Blink**: Command 0x04 received
-
-### LED State Summary Table
-| Event                           | Red LED        | Blue LED       | Green LED        | On-board LED    |
-|---------------------------------|----------------|----------------|------------------|-----------------|
-| System Startup                  | Flash once     | Flash once     | Flash once       | Flash once      |
-| Waiting for Module              | Solid On       | Off            | Off              | Off             |
-| Module Ready                    | Off            | Off            | Off              | Off             |
-| LoRaWAN Initialization          | Off            | Off            | Solid On         | Off             |
-| AT Command Transmission         | Off            | Solid On       | Depends on state | Off             |
-| Network Join Success            | Off            | Off            | Solid On         | Off             |
-| Network Join Failure            | Rapid Flashing | Off            | Off              | Off             |
-| Payload Transmission            | Off            | Solid On       | Solid On         | Off             |
-| Listening for Downlink          | Solid On       | Off            | Solid On         | Off             |
-| Wait Period                     | Off            | Off            | Pulsing          | Off             |
-| Error in Main Loop              | Rapid Flashing | Off            | Solid On         | Off             |
-| Downlink Command Received       | Off            | Off            | Solid On         | Depends on cmd  |
 
 ## LoRaWAN Configuration
 
@@ -143,12 +103,13 @@ This project implements a current sensing system using a WCS6800 current sensor 
 
 ## Initialization Sequence
 
-1. Configure WCS6800 ADC input
-2. Configure UART for RAK3172 communication
-3. Wait for RAK3172 module to be ready
-4. Configure LoRaWAN parameters (ABP mode, keys, etc.)
-5. Join the LoRaWAN network
-6. Begin main measurement and transmission loop
+1. Initialize serial communication
+2. Configure GPIO pins
+3. Set ADC resolution to 12-bit
+4. Wait for RAK3172 module to be ready
+5. Configure LoRaWAN parameters (ABP mode, keys, etc.)
+6. Join the LoRaWAN network
+7. Begin main measurement and transmission loop
 
 ## Main Operation Loop
 
@@ -163,9 +124,8 @@ This project implements a current sensing system using a WCS6800 current sensor 
 
 - UART communication timeouts
 - Module initialization retry mechanism
-- Error reporting via print statements
+- Error reporting via serial monitor
 - Range checking for current values
-- Visual error indication via LED patterns
 
 ## Future Improvements
 
