@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include "config.h"
 
-// --- Log Levels ---
+// --- Debug Levels ---
 #define LOG_NONE 0
 #define LOG_ERROR 1
 #define LOG_INFO 2
@@ -12,7 +12,6 @@
 #define LOG_VERBOSE 4
 
 // --- Error Codes ---
-#define ERR_NONE 0
 #define ERR_SENSOR_READ 1
 #define ERR_LORAWAN_INIT 2
 #define ERR_LORAWAN_JOIN 3
@@ -29,13 +28,11 @@ void log_info(const char* msg);
 void log_debug(const char* msg);
 void log_verbose(const char* msg);
 void log_message(uint8_t level, const char* msg);
-
-// Format logging message with specified format and variable arguments
 void log_format(uint8_t level, const char* format, ...);
 
 // UART helper functions
 void clearUartBuffer();
-bool sendATCommand(const char* command, const char* expectedResponse = "OK", int timeout = 5000);
+bool sendATCommand(const char* command, const char* expectedResponse, int timeout);
 
 // Diagnostic functions
 bool checkWCS6800Sensor();
@@ -44,9 +41,9 @@ bool runFullDiagnostics();
 
 // Error handling
 void handleError(uint8_t errorCode);
-bool retryOperation(uint8_t errorCode, uint8_t maxRetries = 3);
+bool retryOperation(uint8_t errorCode, uint8_t maxRetries);
 
-// JSON formatting for dashboard integration
+// Data formatting
 String formatCurrentAsJson(float currentValue);
 
 #endif // UTILS_H 
