@@ -21,6 +21,12 @@ bool waitForModuleReady();
 bool initializeLoRaWAN();
 bool sendLoRaWANPayload(float currentValue);
 bool listenForDownlink();
+void processDownlinkPayload(String payload);
+void handleOTACommand();
+void checkForPendingDownlinks();
+bool checkForDownlinkData();
+bool processUARTLine(String line);
+void testDownlinkSystem();
 
 void setup() {
   // Initialize serial communication
@@ -87,6 +93,10 @@ void setup() {
   
   log_info("Starting main monitoring loop...");
   lastLoRaTransmission = millis(); // Initialize the last transmission time
+
+  // Run downlink system test
+  delay(2000); // Wait a bit for everything to settle
+  testDownlinkSystem();
 }
 
 void loop() {
@@ -158,6 +168,35 @@ void loop() {
     lastBLEUpdate = currentTime;
   }
   
+  // Check for any pending downlinks (Class C continuous listening)
+  static unsigned long lastDownlinkCheck = 0;
+  if (currentTime - lastDownlinkCheck > 3000) { // Check every 3 seconds
+    checkForPendingDownlinks();
+    lastDownlinkCheck = currentTime;
+  }
+
+  // Also check for any immediate UART data that might be downlink events
+  if (Serial1.available()) {
+    String line = "";
+    unsigned long lineStart = millis();
+
+    // Read a complete line with timeout
+    while (millis() - lineStart < 1000) {
+      if (Serial1.available()) {
+        char c = Serial1.read();
+        if (c == '\n' || c == '\r') {
+          if (line.length() > 0) {
+            processUARTLine(line);
+            break;
+          }
+        } else {
+          line += c;
+        }
+      }
+      delay(10);
+    }
+  }
+
   // Short delay to prevent tight loop
   delay(100);
 }
@@ -264,10 +303,48 @@ bool initializeLoRaWAN() {
   // Join the network
   log_info("Joining LoRaWAN network...");
   if (sendATCommand("AT+JOIN", "OK", 10000)) {
+    log_info("LoRaWAN network join command sent successfully!");
+
+    // Wait for join confirmation
+    delay(2000);
+    unsigned long joinStartTime = millis();
+    bool joinSuccess = false;
+
+    while (millis() - joinStartTime < 30000) { // 30 second timeout for join
+      if (Serial1.available()) {
+        String joinResponse = Serial1.readString();
+        joinResponse.trim();
+        log_format(LOG_DEBUG, "Join response: %s", joinResponse.c_str());
+
+        if (joinResponse.indexOf("+EVT:JOINED") != -1) {
+          log_info("Successfully joined LoRaWAN network!");
+          joinSuccess = true;
+          break;
+        } else if (joinResponse.indexOf("+EVT:JOIN FAILED") != -1) {
+          log_error("Failed to join LoRaWAN network");
+          return false;
+        }
+      }
+      delay(500);
+    }
+
+    if (!joinSuccess) {
+      log_error("Join timeout - no confirmation received");
+      return false;
+    }
+
+    // Verify Class C is active
+    delay(1000);
+    if (sendATCommand("AT+CLASS=?", "C", 3000)) {
+      log_info("Class C confirmed active");
+    } else {
+      log_warning("Class C verification failed, but continuing");
+    }
+
     log_info("LoRaWAN initialized and joined successfully!");
     return true;
   } else {
-    log_error("ERROR: Failed to join LoRaWAN network");
+    log_error("ERROR: Failed to send join command");
     return false;
   }
 }
@@ -312,64 +389,280 @@ bool sendLoRaWANPayload(float currentValue) {
 
 bool listenForDownlink() {
   log_info("Listening for downlink messages...");
-  int timeoutCount = 0;
-  int maxTimeout = 15000; // Wait up to 15 seconds for downlink
-  
-  while (timeoutCount < maxTimeout) {
-    if (Serial1.available()) {
-      String downlinkData = Serial1.readString();
-      downlinkData.trim();
-      log_format(LOG_INFO, "Received: %s", downlinkData.c_str());
-      
-      // Check for transmission done event
-      if (downlinkData.indexOf("+EVT:TX_DONE") != -1) {
-        log_info("Uplink transmission confirmed");
-      }
-      
-      // Check for downlink event
-      else if (downlinkData.indexOf("+EVT:RX_C") != -1 || downlinkData.indexOf("+EVT:RX_") != -1) {
-        // Extract payload (last part after colons)
-        int lastColonIndex = downlinkData.lastIndexOf(':');
-        if (lastColonIndex != -1) {
-          String payload = downlinkData.substring(lastColonIndex + 1);
-          payload.trim();
-          log_format(LOG_INFO, "Downlink payload: %s", payload.c_str());
-          
-          // Process commands
-          if (payload == "01") {
-            log_info("LED ON command received");
-            digitalWrite(LED_PIN, HIGH);
-          } else if (payload == "02") {
-            log_info("LED OFF command received");
-            digitalWrite(LED_PIN, LOW);
-          } else if (payload == "03") {
-            log_info("OTA UPDATE command received");
-            if (OTA_ENABLED && WIFI_ENABLED) {
-              log_info("Triggering WiFi OTA update");
-              triggerOTAUpdate(OTA_METHOD_WIFI);
-            } else {
-              log_error("OTA updates are disabled in config or WiFi is not available");
-            }
-          } else if (payload == "04") {
-            log_info("LED BLINK command received");
-            for (int i = 0; i < 3; i++) { // Blink 3 times
-              digitalWrite(LED_PIN, HIGH);
-              delay(300);
-              digitalWrite(LED_PIN, LOW);
-              delay(300);
-            }
-          } else {
-            log_format(LOG_INFO, "Unknown command: %s", payload.c_str());
+
+  // First, immediately check for any pending downlinks
+  if (checkForDownlinkData()) {
+    return true;
+  }
+
+  // Then listen for new downlink events
+  unsigned long startTime = millis();
+  unsigned long timeout = 15000; // 15 second timeout
+  String buffer = "";
+
+  while (millis() - startTime < timeout) {
+    // Read character by character to avoid missing data
+    while (Serial1.available()) {
+      char c = Serial1.read();
+      buffer += c;
+
+      // Check for complete lines ending with \n or \r
+      if (c == '\n' || c == '\r') {
+        if (buffer.length() > 2) {
+          buffer.trim();
+          log_format(LOG_DEBUG, "UART line: '%s'", buffer.c_str());
+
+          // Process the complete line
+          if (processUARTLine(buffer)) {
+            return true; // Found and processed downlink
           }
         }
-        return true;
+        buffer = ""; // Reset buffer for next line
+      }
+
+      // Prevent buffer overflow
+      if (buffer.length() > 200) {
+        log_warning("UART buffer overflow, clearing");
+        buffer = "";
       }
     }
-    
-    delay(100);
-    timeoutCount += 100;
+
+    delay(50); // Small delay to prevent tight loop
   }
-  
+
   log_info("No downlink received within timeout period");
   return false;
-} 
+}
+
+// Function to process received downlink payload
+void processDownlinkPayload(String payload) {
+  payload.trim();
+  payload.toUpperCase();
+
+  log_format(LOG_INFO, "Processing downlink payload: %s", payload.c_str());
+
+  if (payload.length() == 0) {
+    log_warning("Empty payload received");
+    return;
+  }
+
+  // Process single byte commands
+  if (payload.length() == 2) { // Single byte in hex
+    if (payload == "01") {
+      log_info("LED ON command received");
+      digitalWrite(LED_PIN, HIGH);
+    }
+    else if (payload == "02") {
+      log_info("LED OFF command received");
+      digitalWrite(LED_PIN, LOW);
+    }
+    else if (payload == "03") {
+      log_info("OTA UPDATE command received");
+      if (OTA_ENABLED) {
+        handleOTACommand();
+      } else {
+        log_warning("OTA not enabled, ignoring command");
+      }
+    }
+    else if (payload == "04") {
+      log_info("LED BLINK command received");
+      // Blink LED 5 times
+      for (int i = 0; i < 5; i++) {
+        digitalWrite(LED_PIN, HIGH);
+        delay(200);
+        digitalWrite(LED_PIN, LOW);
+        delay(200);
+      }
+    }
+    else {
+      log_format(LOG_WARNING, "Unknown command: %s", payload.c_str());
+    }
+  }
+  else {
+    log_format(LOG_INFO, "Multi-byte payload received: %s", payload.c_str());
+    // Add processing for longer payloads if needed
+  }
+}
+
+// Function to handle OTA command from downlink
+void handleOTACommand() {
+  log_info("Handling OTA update command from downlink");
+  if (OTA_ENABLED) {
+    triggerOTAUpdate(OTA_METHOD_WIFI);
+  } else {
+    log_error("OTA is not enabled in configuration");
+  }
+}
+
+// Function to check for pending downlinks (for Class C)
+void checkForPendingDownlinks() {
+  checkForDownlinkData();
+}
+
+// Function to check for downlink data using AT+RECV
+bool checkForDownlinkData() {
+  log_debug("Checking for pending downlink data...");
+
+  // Clear buffer first
+  clearUartBuffer();
+
+  // Send AT+RECV=? command
+  Serial1.print("AT+RECV=?\r\n");
+  delay(100); // Give module time to respond
+
+  unsigned long startTime = millis();
+  String response = "";
+  bool foundOK = false;
+
+  // Read response with timeout
+  while ((millis() - startTime) < 3000) {
+    if (Serial1.available()) {
+      char c = Serial1.read();
+      response += c;
+
+      // Check for command completion
+      if (response.indexOf("OK") != -1) {
+        foundOK = true;
+        break;
+      }
+      if (response.indexOf("ERROR") != -1) {
+        log_debug("AT+RECV returned ERROR");
+        return false;
+      }
+    }
+    delay(10);
+  }
+
+  if (!foundOK) {
+    log_debug("AT+RECV timeout");
+    return false;
+  }
+
+  response.trim();
+  log_format(LOG_DEBUG, "AT+RECV full response: '%s'", response.c_str());
+
+  // Look for port:payload pattern before OK
+  int okPos = response.indexOf("OK");
+  if (okPos > 0) {
+    String dataLine = response.substring(0, okPos);
+    dataLine.trim();
+
+    // Check if we have data (not just "0:" which means no data)
+    if (dataLine.length() > 2 && !dataLine.startsWith("0:")) {
+      log_format(LOG_INFO, "Found downlink data: %s", dataLine.c_str());
+
+      // Parse port:payload
+      int colonPos = dataLine.indexOf(":");
+      if (colonPos != -1 && colonPos < dataLine.length() - 1) {
+        String port = dataLine.substring(0, colonPos);
+        String payload = dataLine.substring(colonPos + 1);
+        payload.trim();
+
+        if (payload.length() > 0) {
+          log_format(LOG_INFO, "Processing downlink from port %s: %s", port.c_str(), payload.c_str());
+          processDownlinkPayload(payload);
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+// Function to process individual UART lines for downlink events
+bool processUARTLine(String line) {
+  line.trim();
+
+  if (line.length() == 0) {
+    return false;
+  }
+
+  // Check for downlink event patterns
+  if (line.indexOf("+EVT:RX") != -1) {
+    log_format(LOG_INFO, "Downlink event detected: %s", line.c_str());
+
+    // Extract RSSI and SNR if present
+    if (line.indexOf("RSSI") != -1) {
+      int rssiStart = line.indexOf("RSSI ") + 5;
+      int rssiEnd = line.indexOf(",", rssiStart);
+      if (rssiEnd == -1) rssiEnd = line.indexOf(" ", rssiStart);
+      if (rssiEnd != -1) {
+        String rssiStr = line.substring(rssiStart, rssiEnd);
+        log_format(LOG_INFO, "Downlink RSSI: %s dBm", rssiStr.c_str());
+      }
+    }
+
+    if (line.indexOf("SNR") != -1) {
+      int snrStart = line.indexOf("SNR ") + 4;
+      String snrStr = line.substring(snrStart);
+      snrStr.trim();
+      log_format(LOG_INFO, "Downlink SNR: %s", snrStr.c_str());
+    }
+
+    // Wait a moment then check for data
+    delay(200);
+    return checkForDownlinkData();
+  }
+
+  // Check for direct port:payload format
+  if (line.indexOf(":") != -1 && line.length() > 2) {
+    int colonPos = line.indexOf(":");
+    String beforeColon = line.substring(0, colonPos);
+    String afterColon = line.substring(colonPos + 1);
+
+    // Check if it looks like port:payload (port should be 1-3 digits)
+    if (beforeColon.length() <= 3 && beforeColon.toInt() > 0 && afterColon.length() > 0) {
+      log_format(LOG_INFO, "Direct downlink detected on port %s: %s", beforeColon.c_str(), afterColon.c_str());
+      processDownlinkPayload(afterColon);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Test function to verify downlink system
+void testDownlinkSystem() {
+  log_info("=== Testing Downlink System ===");
+
+  // Test 1: Check AT+RECV command
+  log_info("Test 1: Checking AT+RECV command...");
+  if (checkForDownlinkData()) {
+    log_info("✓ Found pending downlink data");
+  } else {
+    log_info("✓ No pending downlink data (normal)");
+  }
+
+  // Test 2: Verify Class C mode
+  log_info("Test 2: Verifying Class C mode...");
+  if (sendATCommand("AT+CLASS=?", "C", 3000)) {
+    log_info("✓ Class C mode confirmed");
+  } else {
+    log_warning("✗ Class C mode not confirmed");
+  }
+
+  // Test 3: Check join status
+  log_info("Test 3: Checking join status...");
+  if (sendATCommand("AT+NJS=?", "1", 3000)) {
+    log_info("✓ Device is joined to network");
+  } else {
+    log_warning("✗ Device not joined to network");
+  }
+
+  // Test 4: Test LED functionality
+  log_info("Test 4: Testing LED functionality...");
+  log_info("Testing LED ON...");
+  digitalWrite(LED_PIN, HIGH);
+  delay(500);
+  log_info("Testing LED OFF...");
+  digitalWrite(LED_PIN, LOW);
+  delay(500);
+  log_info("✓ LED test completed");
+
+  log_info("=== Downlink System Test Complete ===");
+  log_info("To test downlinks:");
+  log_info("1. Send '01' from ChirpStack to turn LED ON");
+  log_info("2. Send '02' from ChirpStack to turn LED OFF");
+  log_info("3. Send '04' from ChirpStack for LED blink test");
+}

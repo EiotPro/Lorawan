@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 // --- Debug Configuration ---
-#define DEBUG_LEVEL 2  // 0=OFF, 1=ERROR, 2=INFO, 3=DEBUG, 4=VERBOSE
+#define DEBUG_LEVEL 3  // 0=OFF, 1=ERROR, 2=WARNING, 3=INFO, 4=DEBUG, 5=VERBOSE
 
 // --- WCS6800 Sensor Configuration ---
 #define ADC_PIN 26                // GPIO26 / ADC0
@@ -33,27 +33,27 @@
 #define TX_INTERVAL 60000         // Transmit interval in milliseconds (60 seconds)
 
 // --- WiFi Configuration ---
-#define WIFI_ENABLED false         // Set to true to enable WiFi
-const char* const WIFI_SSID = "YourSSID";
-const char* const WIFI_PASSWORD = "YourPassword";
+#define WIFI_ENABLED true        // Set to true to enable WiFi
+const char* const WIFI_SSID = "AEGEUS_2.4";
+const char* const WIFI_PASSWORD = "aegeus2025";
 #define WIFI_TX_INTERVAL 10000    // WiFi data transmission interval in ms
 
 // --- MQTT Configuration ---
 #define MQTT_ENABLED false         // Set to true to enable MQTT
-const char* const MQTT_BROKER = "192.168.1.100";
+const char* const MQTT_BROKER = "183.161.75.85";
 #define MQTT_PORT 1883
-const char* const MQTT_USERNAME = "user";
-const char* const MQTT_PASSWORD = "password";
+const char* const MQTT_USERNAME = "admin";
+const char* const MQTT_PASSWORD = "admin";
 const char* const MQTT_TOPIC = "wcs6800/data";
 
 // --- Bluetooth Configuration ---
-#define BLE_ENABLED false          // Set to true to enable BLE when supported
+#define BLE_ENABLED true         // Set to false as BLE is not supported in Earlephilhower core
 const char* const BLE_DEVICE_NAME = "WCS6800_Monitor";
 #define BLE_TX_INTERVAL 5000      // Bluetooth data transmission interval in ms
 
 // --- OTA Configuration ---
-#define OTA_ENABLED false          // Set to true to enable OTA when supported
-const char* const OTA_SERVER_URL = "http://192.168.1.100:8080/firmware.bin";
+#define OTA_ENABLED true          // Set to true to enable OTA when supported
+const char* const OTA_SERVER_URL = "http://103.161.75.85:8082/firmware.bin";
 const char* const OTA_HTTP_USERNAME = "admin";
 const char* const OTA_HTTP_PASSWORD = "admin";
 

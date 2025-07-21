@@ -1,5 +1,7 @@
 #include "ota_manager.h"
 #include <HTTPClient.h>
+#include <WiFiClient.h>
+#include <LittleFS.h>
 
 // Global variables
 uint8_t otaStatus = OTA_STATUS_IDLE;
@@ -100,24 +102,126 @@ bool downloadAndApplyOTA() {
     
     log_format(LOG_INFO, "Firmware size: %d bytes", contentLength);
     
-    // In Earlephilhower core, we need to use rp2040.updateFirmware() for OTA
-    // This is a simplified placeholder - for actual OTA, you would:
-    // 1. Download the firmware to a buffer or SD card
-    // 2. Call rp2040.updateFirmware() with the proper parameters
-    
-    log_info("OTA update for Pico W requires custom implementation");
-    log_info("Downloading firmware to buffer (not implemented yet)");
-    
-    // Simulate OTA process for now
-    delay(2000);
-    
-    otaStatus = OTA_STATUS_VERIFY;
-    log_info("Firmware verification (simulated)");
-    delay(1000);
-    
+    // For Pico W, we'll download firmware to LittleFS and then apply it
+    log_info("Starting firmware download for Pico W...");
+
+    // Initialize LittleFS if not already done
+    if (!LittleFS.begin()) {
+        log_error("Failed to initialize LittleFS");
+        http.end();
+        otaStatus = OTA_STATUS_FAILED;
+        otaInProgress = false;
+        return false;
+    }
+
+    // Create firmware file on LittleFS
+    File firmwareFile = LittleFS.open("/firmware.bin", "w");
+    if (!firmwareFile) {
+        log_error("Failed to create firmware file");
+        http.end();
+        otaStatus = OTA_STATUS_FAILED;
+        otaInProgress = false;
+        return false;
+    }
+
+    // Get WiFi stream for download
+    WiFiClient* stream = http.getStreamPtr();
+    if (!stream) {
+        log_error("Failed to get HTTP stream");
+        firmwareFile.close();
+        http.end();
+        otaStatus = OTA_STATUS_FAILED;
+        otaInProgress = false;
+        return false;
+    }
+
+    // Download firmware in chunks
+    const size_t bufferSize = 1024;
+    uint8_t buffer[bufferSize];
+    size_t totalDownloaded = 0;
+
+    log_info("Downloading firmware to flash storage...");
+
+    while (totalDownloaded < contentLength) {
+        size_t availableBytes = stream->available();
+        if (availableBytes > 0) {
+            size_t readSize = min(availableBytes, bufferSize);
+            size_t bytesRead = stream->readBytes(buffer, readSize);
+
+            if (bytesRead > 0) {
+                size_t written = firmwareFile.write(buffer, bytesRead);
+                if (written != bytesRead) {
+                    log_format(LOG_ERROR, "File write failed: expected %d, wrote %d", bytesRead, written);
+                    break;
+                }
+
+                totalDownloaded += bytesRead;
+
+                // Log progress every 10KB
+                if (totalDownloaded % 10240 == 0 || totalDownloaded == contentLength) {
+                    int progress = (totalDownloaded * 100) / contentLength;
+                    log_format(LOG_INFO, "Download progress: %d%% (%d/%d bytes)",
+                              progress, totalDownloaded, contentLength);
+                }
+            }
+        } else {
+            delay(10); // Small delay if no data available
+        }
+
+        // Timeout check
+        if (millis() - otaStartTime > 300000) { // 5 minute timeout
+            log_error("OTA download timeout");
+            break;
+        }
+    }
+
+    firmwareFile.close();
     http.end();
-    
-    log_info("OTA update simulated, would reboot in a real implementation");
+
+    if (totalDownloaded != contentLength) {
+        log_format(LOG_ERROR, "Download incomplete: %d/%d bytes", totalDownloaded, contentLength);
+        LittleFS.remove("/firmware.bin");
+        otaStatus = OTA_STATUS_FAILED;
+        otaInProgress = false;
+        return false;
+    }
+
+    log_info("Firmware download completed successfully!");
+    log_format(LOG_INFO, "Downloaded %d bytes to /firmware.bin", totalDownloaded);
+
+    // For Pico W, we need to implement the actual flash update
+    // This is a simplified version - in production you'd want proper verification
+    otaStatus = OTA_STATUS_VERIFY;
+    log_info("Firmware verification (basic file check)");
+
+    // Check if file exists and has correct size
+    File verifyFile = LittleFS.open("/firmware.bin", "r");
+    if (verifyFile && verifyFile.size() == contentLength) {
+        log_info("Firmware file verification passed");
+        verifyFile.close();
+
+        // Mark for update on next boot (this is platform-specific)
+        log_info("OTA update prepared successfully!");
+        log_warning("IMPORTANT: Pico W OTA requires manual reboot or bootloader integration");
+        log_info("Firmware is ready at /firmware.bin");
+        log_info("For complete OTA, implement bootloader integration or use picotool");
+
+        otaStatus = OTA_STATUS_SUCCESS;
+
+        // Optional: Reboot to apply update (if bootloader supports it)
+        log_info("Rebooting in 5 seconds...");
+        delay(5000);
+        rp2040.reboot();
+
+        return true;
+    } else {
+        log_error("Firmware verification failed");
+        if (verifyFile) verifyFile.close();
+        LittleFS.remove("/firmware.bin");
+        otaStatus = OTA_STATUS_FAILED;
+        otaInProgress = false;
+        return false;
+    }
     otaStatus = OTA_STATUS_SUCCESS;
     otaInProgress = false;
     

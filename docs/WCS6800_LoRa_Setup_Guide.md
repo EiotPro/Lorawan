@@ -4,30 +4,32 @@
 
 Before setting up the system, ensure you have the following:
 
-1. Raspberry Pi Pico with Arduino support installed
+1. Raspberry Pi Pico W (required for WiFi/BLE functionality)
 2. WCS6800 Current Sensor
 3. RAK3172 LoRaWAN Module
-4. LED (optional for visual feedback)
+4. LED (optional for visual feedback, on-board LED is used by default)
 5. Jumper wires and breadboard
 6. Micro USB cable for programming and power
 7. Access to a ChirpStack LoRaWAN server and gateway
-8. Arduino IDE with Raspberry Pi Pico board support
+8. WiFi network for local connectivity (if using WiFi features)
+9. MQTT broker (if using MQTT functionality)
+10. HTTP server (if using OTA updates)
 
 ## Hardware Assembly
 
 ### Step 1: Connect the WCS6800 Current Sensor
 
-1. Connect WCS6800 VCC to Raspberry Pi Pico 3.3V
-2. Connect WCS6800 GND to Raspberry Pi Pico GND
-3. Connect WCS6800 VOUT to Raspberry Pi Pico GPIO 26 (ADC0)
+1. Connect WCS6800 VCC to Raspberry Pi Pico W 3.3V
+2. Connect WCS6800 GND to Raspberry Pi Pico W GND
+3. Connect WCS6800 VOUT to Raspberry Pi Pico W GPIO 26 (ADC0)
 
 ### Step 2: Connect the RAK3172 LoRaWAN Module
 
-1. Connect RAK3172 VCC to Raspberry Pi Pico 3.3V
-2. Connect RAK3172 GND to Raspberry Pi Pico GND
-3. Connect RAK3172 TX to Raspberry Pi Pico GPIO 1 (UART0 RX)
-4. Connect RAK3172 RX to Raspberry Pi Pico GPIO 0 (UART0 TX)
-5. Connect RAK3172 RESET to Raspberry Pi Pico GPIO 30
+1. Connect RAK3172 VCC to Raspberry Pi Pico W 3.3V
+2. Connect RAK3172 GND to Raspberry Pi Pico W GND
+3. Connect RAK3172 TX to Raspberry Pi Pico W GPIO 1 (UART0 RX)
+4. Connect RAK3172 RX to Raspberry Pi Pico W GPIO 0 (UART0 TX)
+5. Connect RAK3172 RESET to Raspberry Pi Pico W GPIO 2
 
 ### Step 3: Connect LED Indicator (Optional)
 
@@ -35,17 +37,43 @@ The on-board LED (GPIO 25) is used for visual feedback from downlink commands. N
 
 ## Software Setup
 
-### Step 1: Set Up Arduino IDE
+### Step 1: Set Up PlatformIO
 
-1. Install the Arduino IDE from [arduino.cc](https://www.arduino.cc/en/software)
-2. Add Raspberry Pi Pico board support to Arduino IDE:
-   - Open Arduino IDE
-   - Go to File > Preferences
-   - Add this URL to "Additional Boards Manager URLs": `https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json`
-   - Go to Tools > Board > Boards Manager
-   - Search for "Raspberry Pi Pico" and install the board package
+1. Install Visual Studio Code from [code.visualstudio.com](https://code.visualstudio.com/)
+2. Install the PlatformIO extension from the VS Code marketplace
+3. Clone or download the project repository
+4. Open the project folder in VS Code with PlatformIO
 
-### Step 2: Set Up ChirpStack Server
+### Step 2: Configure the Raspberry Pi Pico W Board
+
+Ensure your platformio.ini file contains the correct settings:
+
+```ini
+[env]
+platform = https://github.com/maxgerhardt/platform-raspberrypi.git
+framework = arduino
+board_build.core = earlephilhower
+monitor_speed = 115200
+
+[env:rpipicow]
+board = rpipicow
+
+; Build options
+build_flags = 
+    -D ARDUINO_ARCH_RP2040
+    -D DEBUG_MODE=1
+    -D PIN_SERIAL1_TX=0
+    -D PIN_SERIAL1_RX=1
+
+; Libraries
+lib_deps =
+    ; MQTT client
+    knolleary/PubSubClient@^2.8
+    ; ArduinoJson for JSON formatting
+    bblanchon/ArduinoJson@^6.21.3
+```
+
+### Step 3: Set Up ChirpStack Server
 
 1. Register a new device in ChirpStack with ABP activation
 2. Note down the following credentials:
@@ -53,65 +81,134 @@ The on-board LED (GPIO 25) is used for visual feedback from downlink commands. N
    - Network Session Key
    - Application Session Key
 3. Ensure the codec functions are applied to your application in ChirpStack:
-   - Upload the `Chirpstack_codec.js` file to your ChirpStack application
+   - Upload the `docs/Chirpstack_codec.js` file to your ChirpStack application
 
-### Step 3: Configure the Arduino Code
+### Step 4: Configure Project Settings
 
-1. Open the `Pico_WCS6800.ino` file in Arduino IDE
-2. Update the LoRaWAN ABP configuration with your device credentials:
+1. Open the `include/config.h` file and update:
+
+   a. LoRaWAN settings:
    ```cpp
-   const char* DevAdd = "01d3257c";  // Replace with your Device Address
-   const char* NetKey = "06ebd62a3b4e2ed8d45d38d0f515988e";  // Replace with your Network Session Key
-   const char* SessKey = "ef54ccd9b3d974e8736c60d916ad6e96";  // Replace with your Application Session Key
+   #define LORAWAN_DEV_ADDR "01d3257c"  // Replace with your Device Address
+   #define LORAWAN_NWKS_KEY "06ebd62a3b4e2ed8d45d38d0f515988e"  // Replace with your Network Session Key
+   #define LORAWAN_APPS_KEY "ef54ccd9b3d974e8736c60d916ad6e96"  // Replace with your Application Session Key
+   #define LORAWAN_REGION 3  // Change to your region's code
    ```
-3. If needed, adjust the region setting in the `initializeLoRaWAN()` function:
+
+   b. WiFi settings (if using WiFi):
    ```cpp
-   {"AT+BAND=3", "IN865 region"},  // Change to your region's code
+   #define WIFI_ENABLED true
+   const char* const WIFI_SSID = "YourNetworkName";
+   const char* const WIFI_PASSWORD = "YourNetworkPassword";
    ```
-   Region codes:
-   - EU868: 0
-   - US915: 1
-   - AU915: 2
-   - IN865: 3
-   - KR920: 4
-   - AS923: 5
-   - AS923-2: 6
-   - AS923-3: 7
-   - AS923-4: 8
 
-### Step 4: Upload Code to Raspberry Pi Pico
+   c. MQTT settings (if using MQTT):
+   ```cpp
+   #define MQTT_ENABLED true
+   const char* const MQTT_BROKER = "192.168.1.100";  // Your MQTT broker IP
+   #define MQTT_PORT 1883
+   const char* const MQTT_USERNAME = "user";  // If authentication is needed
+   const char* const MQTT_PASSWORD = "password";  // If authentication is needed
+   const char* const MQTT_TOPIC = "wcs6800/data";
+   ```
 
-1. Connect the Raspberry Pi Pico to your computer via USB
-2. Press and hold the BOOTSEL button while connecting to enter programming mode
-3. In Arduino IDE:
-   - Select the appropriate board (Raspberry Pi Pico)
-   - Select the correct port
-   - Click the Upload button
-4. Once uploaded, the Pico will restart and run the program automatically
+   d. OTA settings (if using OTA updates):
+   ```cpp
+   #define OTA_ENABLED true
+   const char* const OTA_SERVER_URL = "http://192.168.1.100:8080/firmware.bin";
+   const char* const OTA_HTTP_USERNAME = "admin";  // If authentication is needed
+   const char* const OTA_HTTP_PASSWORD = "admin";  // If authentication is needed
+   ```
+
+   e. Bluetooth settings (if using BLE):
+   ```cpp
+   #define BLE_ENABLED true
+   const char* const BLE_DEVICE_NAME = "WCS6800_Monitor";
+   ```
+
+   f. Debug level:
+   ```cpp
+   #define DEBUG_LEVEL 2  // 0=OFF, 1=ERROR, 2=INFO, 3=DEBUG, 4=VERBOSE
+   ```
+
+### Step 5: Upload Code to Raspberry Pi Pico W
+
+1. Connect the Raspberry Pi Pico W to your computer via USB
+2. Press and hold the BOOTSEL button while connecting to enter bootloader mode
+3. In VS Code with PlatformIO:
+   - Click the PlatformIO icon in the sidebar
+   - Select "Upload" under the "Project Tasks" menu
+   - Wait for the compilation and upload to complete
+4. Once uploaded, the Pico W will restart and run the program automatically
 
 ## Testing the System
 
-### Verifying Hardware Connections
+### Phased Testing Approach
 
-When the system powers up, you should observe:
+We recommend testing the system in phases:
 
-1. Serial monitor output showing initialization
-2. Connection attempts to the RAK3172 module
-3. Successful LoRaWAN network join messages
+1. **Phase 1**: Test basic LoRaWAN functionality
+2. **Phase 2**: Test WiFi and MQTT (if enabled)
+3. **Phase 3**: Test BLE functionality (if enabled)
+4. **Phase 4**: Test OTA updates (if enabled)
 
-To view debug information:
-1. Open the Serial Monitor in Arduino IDE
-2. Set the baud rate to 115200
-3. Monitor the initialization and operational messages
+### Phase 1: Basic LoRaWAN Functionality
 
-### Verifying LoRaWAN Communication
+1. Connect to the serial monitor at 115200 baud:
+   ```
+   pio device monitor -b 115200
+   ```
+2. Verify:
+   - System initialization messages
+   - Successful LoRaWAN connection
+   - Current readings and LoRaWAN transmissions
+   - Check that readings appear in ChirpStack
 
-1. Monitor the device in ChirpStack - you should see uplink messages every 60 seconds
+### Phase 2: WiFi and MQTT Functionality
+
+1. Enable WiFi and MQTT in config.h
+2. Upload the firmware
+3. Verify:
+   - WiFi connection success messages
+   - MQTT connection success messages
+   - Use an MQTT client to subscribe to your topic:
+     ```
+     mosquitto_sub -h <broker_ip> -t wcs6800/data -v
+     ```
+   - Verify that data is received by the MQTT broker
+
+### Phase 3: BLE Functionality
+
+1. Enable BLE in config.h
+2. Upload the firmware
+3. Use a BLE scanner app on your smartphone:
+   - Scan for "WCS6800_Monitor" device
+   - Connect to the device
+   - View current readings
+   - Send commands if your app supports BLE writes
+
+### Phase 4: OTA Updates
+
+1. Enable OTA in config.h
+2. Upload the firmware
+3. Prepare a new firmware binary:
+   ```
+   pio run -t buildprog
+   ```
+   Find the .bin file in .pio/build/rpipicow/
+4. Host the binary on an HTTP server
+5. Send a downlink command with payload "03" from ChirpStack
+6. Monitor serial output to verify OTA progress
+
+## Verifying LoRaWAN Communication
+
+1. Monitor the device in ChirpStack - you should see uplink messages every TX_INTERVAL (default 60 seconds)
 2. The decoded messages will show current readings in both milliamps and amps
 3. Test downlink functionality by sending commands:
    - `{"led_command": "on"}` - Turn on the on-board LED
    - `{"led_command": "off"}` - Turn off the on-board LED
    - `{"led_command": "blink"}` - Make the on-board LED blink
+   - `{"led_command": "ota"}` - Trigger OTA update
 
 ## Troubleshooting
 
@@ -122,46 +219,51 @@ To view debug information:
 | Module initialization failure | "Failed to communicate with module" message | Check RAK3172 connections and power |
 | Network join failure | "Failed to join LoRaWAN network" message | Verify credentials and gateway coverage |
 | UART communication issues | Timeout messages for AT commands | Check UART connections and baud rate |
-| Main loop error | Error messages during operation | Check serial output for specific error details |
-| System crash | No serial output | Check power supply and connections |
+| WiFi connection failure | "Failed to connect to WiFi" message | Check SSID/password and signal strength |
+| MQTT connection failure | "MQTT connection failed" message | Verify broker address and credentials |
+| OTA update failure | "OTA failed" message | Check WiFi connection and server URL |
+| Serial output issues | No serial output | Check USB connection and baud rate |
 
 ### Serial Output
 
 Connect to the Pico's USB serial port (115200 baud) to view debug messages:
 
-1. Messages beginning with "Sending command:" show AT commands sent to RAK3172
-2. Response data from RAK3172 is displayed directly
-3. Current readings are displayed every measurement cycle
-4. Error messages will be prefixed with "ERROR:"
+1. Messages are categorized by log level:
+   - ERROR: Critical issues requiring attention
+   - INFO: Normal operational information
+   - DEBUG: Detailed information for debugging
+   - VERBOSE: Very detailed tracing information
+
+2. Configure the log level in config.h to control verbosity
 
 ## Power Considerations
 
 The system can be powered in several ways:
 
-1. **USB Power**: Connect the Pico to a USB power source (5V)
+1. **USB Power**: Connect the Pico W to a USB power source (5V)
 2. **Battery Power**: Connect a LiPo battery to the VSYS and GND pins (3.7-5.5V)
 3. **External Power**: Supply 3.3V directly to the 3V3 and GND pins
 
-> **Note**: When using battery power, ensure proper voltage regulation and monitor battery levels.
+> **Note**: When using WiFi or BLE, power consumption increases significantly. Consider power requirements carefully for battery-powered applications.
 
 ## Customization
 
-### Adjusting Measurement Interval
+### Adjusting Measurement Intervals
 
 To change how often measurements are taken and transmitted:
 
-1. Locate the delay at the end of the `loop()` function
-2. Modify the delay time:
+1. In config.h, modify the interval settings:
    ```cpp
-   // For a 30-second interval instead of 60 seconds
-   delay(30000);
+   #define TX_INTERVAL 60000         // LoRaWAN interval (60 seconds)
+   #define WIFI_TX_INTERVAL 10000    // MQTT interval (10 seconds)
+   #define BLE_TX_INTERVAL 5000      // BLE update interval (5 seconds)
    ```
 
 ### Calibrating the Current Sensor
 
 If the current readings seem inaccurate:
 
-1. Adjust the WCS6800 sensitivity and offset voltage constants:
+1. Adjust the WCS6800 sensitivity and offset voltage constants in config.h:
    ```cpp
    #define WCS6800_SENSITIVITY 0.0429 // V/A (may need calibration)
    #define WCS6800_OFFSET_VOLTAGE 1.65 // Volts (may vary by sensor)
@@ -171,19 +273,35 @@ If the current readings seem inaccurate:
 
 ## Advanced Configuration
 
-### Changing to OTAA Mode
+### Adding New Features
 
-To use Over-The-Air Activation instead of ABP:
+The modular code structure makes it easy to add new features:
 
-1. Obtain DevEUI, AppEUI, and AppKey from ChirpStack
-2. Modify the `initializeLoRaWAN()` function to use OTAA parameters
-3. Update the ChirpStack codec as needed for OTAA operation
+1. Create a new module header (.h) and implementation (.cpp) files
+2. Add configuration options to config.h
+3. Include and initialize the module in main.cpp
+4. Integrate with the main processing loop
 
-### Adding Additional Sensors
+### Creating a Web Dashboard
 
-The system can be expanded with additional sensors:
+You can create a web dashboard to display data by:
 
-1. Connect new sensors to available GPIO pins
-2. Initialize and read them in the code
-3. Expand the payload format to include additional sensor data
-4. Update the ChirpStack codec to decode the expanded payload 
+1. Setting up a web server that subscribes to the MQTT topic
+2. Creating visualization using tools like Node-RED, Grafana, or custom web apps
+3. Storing data in a database for historical analysis
+
+### Expanding BLE Functionality
+
+You can expand BLE functionality by adding more services and characteristics:
+
+1. Define additional UUIDs in ble_manager.h
+2. Create new characteristics in setupBLE()
+3. Add handlers for notifications and commands
+
+### Setting Up a Development Environment
+
+For development with debugging:
+
+1. Configure OpenOCD for Pico W debugging
+2. Set up a debug configuration in PlatformIO
+3. Use breakpoints and watch variables for debugging 

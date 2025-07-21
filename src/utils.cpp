@@ -8,6 +8,10 @@ void log_error(const char* msg) {
   log_message(LOG_ERROR, msg);
 }
 
+void log_warning(const char* msg) {
+  log_message(LOG_WARNING, msg);
+}
+
 void log_info(const char* msg) {
   log_message(LOG_INFO, msg);
 }
@@ -25,11 +29,12 @@ void log_message(uint8_t level, const char* msg) {
     const char* prefix = "";
     switch (level) {
       case LOG_ERROR:   prefix = "[ERROR] "; break;
+      case LOG_WARNING: prefix = "[WARNING] "; break;
       case LOG_INFO:    prefix = "[INFO] "; break;
       case LOG_DEBUG:   prefix = "[DEBUG] "; break;
       case LOG_VERBOSE: prefix = "[VERBOSE] "; break;
     }
-    
+
     Serial.print(prefix);
     Serial.println(msg);
   }
@@ -58,34 +63,42 @@ void clearUartBuffer() {
 
 bool sendATCommand(const char* command, const char* expectedResponse, int timeout) {
   clearUartBuffer();
-  
+
   Serial1.print(command);
   Serial1.print("\r\n");
   log_format(LOG_DEBUG, "Sending command: %s", command);
-  
+
   unsigned long startTime = millis();
   String response = "";
-  
+
   while ((millis() - startTime) < (unsigned long)timeout) {
     if (Serial1.available()) {
       char c = Serial1.read();
       response += c;
-      
+
       // Print UART responses at VERBOSE level
       if (DEBUG_LEVEL >= LOG_VERBOSE) {
         Serial.print(c);
       }
-      
-      // Check if we got the expected response
-      if (response.indexOf(expectedResponse) != -1) {
-        log_debug("Command succeeded");
+
+      // Check if we got the expected response (or if no specific response expected)
+      if (strlen(expectedResponse) == 0 || response.indexOf(expectedResponse) != -1) {
+        if (strlen(expectedResponse) > 0) {
+          log_debug("Command succeeded");
+        } else {
+          log_format(LOG_DEBUG, "Command sent, response: %s", response.c_str());
+        }
         return true;
       }
     }
     delay(10);
   }
-  
-  log_format(LOG_ERROR, "Timeout waiting for '%s' response", expectedResponse);
+
+  if (strlen(expectedResponse) > 0) {
+    log_format(LOG_ERROR, "Timeout waiting for '%s' response. Got: %s", expectedResponse, response.c_str());
+  } else {
+    log_format(LOG_DEBUG, "Command completed, response: %s", response.c_str());
+  }
   return false;
 }
 
