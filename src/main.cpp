@@ -2,8 +2,8 @@
 #include "config.h"
 #include "utils.h"
 #include "wifi_manager.h"
-#include "ble_manager.h"
 #include "ota_manager.h"
+#include <LittleFS.h>
 
 // --- LoRaWAN ABP Configuration ---
 const char* DevAdd = LORAWAN_DEV_ADDR;  // Device Address from ChirpStack
@@ -11,8 +11,6 @@ const char* NetKey = LORAWAN_NWKS_KEY;  // Network Session Key from ChirpStack
 const char* SessKey = LORAWAN_APPS_KEY; // Application Session Key from ChirpStack
 
 // Timers for various operations
-unsigned long lastMQTTPublish = 0;
-unsigned long lastBLEUpdate = 0;
 unsigned long lastLoRaTransmission = 0;
 
 // Function prototypes
@@ -27,6 +25,7 @@ void checkForPendingDownlinks();
 bool checkForDownlinkData();
 bool processUARTLine(String line);
 void testDownlinkSystem();
+void checkForPendingOTAUpdate();
 
 void setup() {
   // Initialize serial communication
@@ -46,6 +45,12 @@ void setup() {
   
   log_info("==========================================================");
   log_info("WCS6800 Current Sensor LoRaWAN Monitor");
+  log_format(LOG_INFO, "Device: %s", DEVICE_NAME);
+  log_format(LOG_INFO, "Version: %s", DEVICE_VERSION);
+  log_format(LOG_INFO, "Build: %s", BUILD_TIMESTAMP);
+
+  // Check for pending OTA updates
+  checkForPendingOTAUpdate();
   log_info("==========================================================");
   log_format(LOG_INFO, "UART: TX=GP%d, RX=GP%d @ %d baud", UART_TX_PIN, UART_RX_PIN, UART_BAUDRATE);
   log_format(LOG_INFO, "ADC: WCS6800 on GP%d", ADC_PIN);
@@ -66,15 +71,6 @@ void setup() {
     }
   }
   
-  // Initialize BLE if enabled
-  if (BLE_ENABLED) {
-    if (setupBLE()) {
-      log_info("BLE initialized successfully");
-    } else {
-      log_error("BLE initialization not available on this hardware");
-    }
-  }
-  
   // Initialize OTA if enabled
   if (OTA_ENABLED) {
     if (setupOTA()) {
@@ -83,7 +79,7 @@ void setup() {
       log_error("OTA initialization failed");
     }
   }
-  
+
   // Initialize LoRaWAN
   if (!initializeLoRaWAN()) {
     log_error("FATAL ERROR: LoRaWAN initialization failed");
@@ -105,10 +101,7 @@ void loop() {
     handleWiFiEvents();
   }
   
-  // Handle BLE events
-  if (BLE_ENABLED) {
-    handleBLEEvents();
-  }
+
   
   // Handle OTA events
   if (OTA_ENABLED) {
@@ -132,17 +125,9 @@ void loop() {
     // Format data as JSON for dashboard integration
     String jsonData = formatCurrentAsJson(currentVal);
     
-    // Update BLE characteristic if connected and enough time has passed
-    if (BLE_ENABLED && (currentTime - lastBLEUpdate > BLE_TX_INTERVAL)) {
-      updateBLECurrentValue(currentVal);
-      lastBLEUpdate = currentTime;
-    }
+
     
-    // Publish to MQTT if enabled and enough time has passed
-    if (WIFI_ENABLED && MQTT_ENABLED && (currentTime - lastMQTTPublish > WIFI_TX_INTERVAL)) {
-      publishCurrentData(currentVal);
-      lastMQTTPublish = currentTime;
-    }
+
     
     // Send data via LoRaWAN
     if (sendLoRaWANPayload(currentVal)) {
@@ -156,17 +141,9 @@ void loop() {
     lastLoRaTransmission = currentTime;
   }
   
-  // Process more frequent updates for WiFi/BLE without LoRaWAN transmissions
-  // to avoid overloading the network
-  if (WIFI_ENABLED && MQTT_ENABLED && (currentTime - lastMQTTPublish > WIFI_TX_INTERVAL)) {
-    publishCurrentData(currentVal);
-    lastMQTTPublish = currentTime;
-  }
+
   
-  if (BLE_ENABLED && (currentTime - lastBLEUpdate > BLE_TX_INTERVAL)) {
-    updateBLECurrentValue(currentVal);
-    lastBLEUpdate = currentTime;
-  }
+
   
   // Check for any pending downlinks (Class C continuous listening)
   static unsigned long lastDownlinkCheck = 0;
@@ -613,9 +590,16 @@ bool processUARTLine(String line) {
 
     // Check if it looks like port:payload (port should be 1-3 digits)
     if (beforeColon.length() <= 3 && beforeColon.toInt() > 0 && afterColon.length() > 0) {
-      log_format(LOG_INFO, "Direct downlink detected on port %s: %s", beforeColon.c_str(), afterColon.c_str());
-      processDownlinkPayload(afterColon);
-      return true;
+      uint8_t fport = beforeColon.toInt();
+      log_format(LOG_INFO, "Direct downlink detected on port %d: %s", fport, afterColon.c_str());
+
+      // Check if this is a FUOTA message (disabled for now)
+      // if (fport >= 200 && fport <= 202) {
+      //   return processFuotaDownlink(fport, afterColon);
+      // } else {
+        processDownlinkPayload(afterColon);
+        return true;
+      // }
     }
   }
 
@@ -665,4 +649,95 @@ void testDownlinkSystem() {
   log_info("1. Send '01' from ChirpStack to turn LED ON");
   log_info("2. Send '02' from ChirpStack to turn LED OFF");
   log_info("3. Send '04' from ChirpStack for LED blink test");
+}
+
+// Function to process FUOTA downlink messages (disabled for now)
+/*
+bool processFuotaDownlink(uint8_t fport, String hexPayload) {
+  log_format(LOG_INFO, "Processing FUOTA message on port %d: %s", fport, hexPayload.c_str());
+
+  // Convert hex string to bytes
+  int payloadLength = hexPayload.length() / 2;
+  if (payloadLength == 0 || hexPayload.length() % 2 != 0) {
+    log_error("Invalid FUOTA hex payload length");
+    return false;
+  }
+
+  uint8_t* payload = (uint8_t*)malloc(payloadLength);
+  if (!payload) {
+    log_error("Failed to allocate memory for FUOTA payload");
+    return false;
+  }
+
+  // Convert hex string to bytes
+  for (int i = 0; i < payloadLength; i++) {
+    String byteStr = hexPayload.substring(i * 2, i * 2 + 2);
+    payload[i] = (uint8_t)strtol(byteStr.c_str(), NULL, 16);
+  }
+
+  // Process FUOTA message
+  bool result = fuotaHandler.handleFuotaMessage(fport, payload, payloadLength);
+
+  free(payload);
+  return result;
+}
+*/
+
+// Check for pending OTA updates from previous session
+void checkForPendingOTAUpdate() {
+  if (!LittleFS.begin()) {
+    log_warning("LittleFS not available for OTA check");
+    return;
+  }
+
+  // Check for OTA metadata file
+  File metadataFile = LittleFS.open("/ota_metadata.json", "r");
+  if (metadataFile) {
+    log_info("🔍 Pending OTA update detected!");
+
+    // Read metadata
+    String metadata = metadataFile.readString();
+    metadataFile.close();
+
+    log_info("📋 OTA Metadata:");
+    log_format(LOG_INFO, "%s", metadata.c_str());
+
+    // Check if firmware file still exists
+    File firmwareFile = LittleFS.open("/firmware.bin", "r");
+    if (firmwareFile) {
+      size_t firmwareSize = firmwareFile.size();
+      log_info("✅ Downloaded firmware file verified!");
+      log_format(LOG_INFO, "📁 Firmware available: %d bytes at /firmware.bin", firmwareSize);
+      log_warning("⚠️  Manual intervention required for flash update");
+      log_info("💡 For production: Implement bootloader integration");
+
+      // Show file contents for verification
+      log_info("📄 Available OTA files:");
+      File root = LittleFS.open("/", "r");
+      if (root && root.isDirectory()) {
+        File file = root.openNextFile();
+        while (file) {
+          if (!file.isDirectory()) {
+            log_format(LOG_INFO, "  • %s (%d bytes)", file.name(), file.size());
+          }
+          file = root.openNextFile();
+        }
+      }
+
+      firmwareFile.close();
+    } else {
+      log_warning("⚠️  Downloaded firmware file not found");
+    }
+
+    // Mark metadata as processed (but keep files for manual inspection)
+    File processedFile = LittleFS.open("/ota_processed.txt", "w");
+    if (processedFile) {
+      processedFile.printf("OTA processed at boot: %lu ms\n", millis());
+      processedFile.close();
+    }
+
+    log_info("🧹 OTA metadata processed (files preserved for inspection)");
+  } else {
+    log_info("ℹ️  No pending OTA updates");
+  }
 }

@@ -3,6 +3,11 @@
 
 #include <Arduino.h>
 
+// --- Device Information ---
+#define DEVICE_NAME "WCS6800_Sensor"
+#define DEVICE_VERSION "1.2.0"  // NEW VERSION - SIMULATING SUCCESSFUL OTA
+#define BUILD_TIMESTAMP __DATE__ " " __TIME__
+
 // --- Debug Configuration ---
 #define DEBUG_LEVEL 3  // 0=OFF, 1=ERROR, 2=WARNING, 3=INFO, 4=DEBUG, 5=VERBOSE
 
@@ -25,12 +30,15 @@
 #define LORAWAN_APPS_KEY "ef54ccd9b3d974e8736c60d916ad6e96"
 #define LORAWAN_REGION 3          // IN865 region
 
+
+
 // --- Pin Configuration ---
 #define LED_PIN 25
 #define RST_PIN 2
 
-// --- Transmission Configuration ---
-#define TX_INTERVAL 60000         // Transmit interval in milliseconds (60 seconds)
+// --- Timing Configuration ---
+#define LORA_TX_INTERVAL 60000    // LoRaWAN transmission interval in ms (60 seconds)
+#define TX_INTERVAL 60000         // Legacy - same as LORA_TX_INTERVAL
 
 // --- WiFi Configuration ---
 #define WIFI_ENABLED true        // Set to true to enable WiFi
@@ -38,23 +46,12 @@ const char* const WIFI_SSID = "AEGEUS_2.4";
 const char* const WIFI_PASSWORD = "aegeus2025";
 #define WIFI_TX_INTERVAL 10000    // WiFi data transmission interval in ms
 
-// --- MQTT Configuration ---
-#define MQTT_ENABLED false         // Set to true to enable MQTT
-const char* const MQTT_BROKER = "183.161.75.85";
-#define MQTT_PORT 1883
-const char* const MQTT_USERNAME = "admin";
-const char* const MQTT_PASSWORD = "admin";
-const char* const MQTT_TOPIC = "wcs6800/data";
 
-// --- Bluetooth Configuration ---
-#define BLE_ENABLED true         // Set to false as BLE is not supported in Earlephilhower core
-const char* const BLE_DEVICE_NAME = "WCS6800_Monitor";
-#define BLE_TX_INTERVAL 5000      // Bluetooth data transmission interval in ms
 
 // --- OTA Configuration ---
-#define OTA_ENABLED true          // Set to true to enable OTA when supported
-const char* const OTA_SERVER_URL = "http://103.161.75.85:8082/firmware.bin";
-const char* const OTA_HTTP_USERNAME = "admin";
-const char* const OTA_HTTP_PASSWORD = "admin";
+#define OTA_ENABLED true
+const char* const OTA_SERVER_URL = "http://iotlogic.in/ota/firmware.bin";
+const char* const OTA_HTTP_USERNAME = "";
+const char* const OTA_HTTP_PASSWORD = "";
 
 #endif // CONFIG_H 

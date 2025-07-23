@@ -3,7 +3,6 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <PubSubClient.h>
 #include "config.h"
 #include "utils.h"
 
@@ -15,9 +14,6 @@
 // Function prototypes
 bool setupWiFi();
 bool connectToWiFi();
-bool setupMQTT();
-bool publishCurrentData(float currentValue);
 void handleWiFiEvents();
-void onMQTTMessage(char* topic, byte* payload, unsigned int length);
 
 #endif // WIFI_MANAGER_H 

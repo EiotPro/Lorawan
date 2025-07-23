@@ -20,6 +20,7 @@ bool setupOTA();
 bool triggerOTAUpdate(uint8_t method);
 bool downloadAndApplyOTA();
 bool verifyFirmware(uint8_t* buffer, size_t size);
+bool performFlashUpdate();
 void handleOTAEvents();
 uint8_t getOTAStatus();
 
