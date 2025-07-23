@@ -8,8 +8,8 @@
         {
             "name": "PlatformIO",
             "includePath": [
-                "C:/Users/Dell/Documents/PlatformIO/Projects/Lorawan/Lorawan/include",
-                "C:/Users/Dell/Documents/PlatformIO/Projects/Lorawan/Lorawan/src",
+                "C:/Users/Dell/Documents/PlatformIO/Projects/Lorawan_update/Lorawan/Lorawan/include",
+                "C:/Users/Dell/Documents/PlatformIO/Projects/Lorawan_update/Lorawan/Lorawan/src",
                 "C:/Users/Dell/.platformio/packages/framework-arduinopico/libraries/HTTPClient/src",
                 "C:/Users/Dell/.platformio/packages/framework-arduinopico/libraries/WiFi/src",
                 "C:/Users/Dell/.platformio/packages/framework-arduinopico/libraries/Updater/src",
@@ -19,7 +19,7 @@
                 "C:/Users/Dell/.platformio/packages/framework-arduinopico/libraries/lwIP_Ethernet/src",
                 "C:/Users/Dell/.platformio/packages/framework-arduinopico/libraries/SPI/src",
                 "C:/Users/Dell/.platformio/packages/framework-arduinopico/libraries/LittleFS/src",
-                "C:/Users/Dell/Documents/PlatformIO/Projects/Lorawan/Lorawan/.pio/libdeps/rpipicow/ArduinoJson/src",
+                "C:/Users/Dell/Documents/PlatformIO/Projects/Lorawan_update/Lorawan/Lorawan/.pio/libdeps/rpipicow/ArduinoJson/src",
                 "C:/Users/Dell/.platformio/packages/framework-arduinopico/cores/rp2040",
                 "C:/Users/Dell/.platformio/packages/framework-arduinopico/cores/rp2040/api/deprecated",
                 "C:/Users/Dell/.platformio/packages/framework-arduinopico/cores/rp2040/api/deprecated-avr-comp",
@@ -166,8 +166,8 @@
             "browse": {
                 "limitSymbolsToIncludedHeaders": true,
                 "path": [
-                    "C:/Users/Dell/Documents/PlatformIO/Projects/Lorawan/Lorawan/include",
-                    "C:/Users/Dell/Documents/PlatformIO/Projects/Lorawan/Lorawan/src",
+                    "C:/Users/Dell/Documents/PlatformIO/Projects/Lorawan_update/Lorawan/Lorawan/include",
+                    "C:/Users/Dell/Documents/PlatformIO/Projects/Lorawan_update/Lorawan/Lorawan/src",
                     "C:/Users/Dell/.platformio/packages/framework-arduinopico/libraries/HTTPClient/src",
                     "C:/Users/Dell/.platformio/packages/framework-arduinopico/libraries/WiFi/src",
                     "C:/Users/Dell/.platformio/packages/framework-arduinopico/libraries/Updater/src",
@@ -177,7 +177,7 @@
                     "C:/Users/Dell/.platformio/packages/framework-arduinopico/libraries/lwIP_Ethernet/src",
                     "C:/Users/Dell/.platformio/packages/framework-arduinopico/libraries/SPI/src",
                     "C:/Users/Dell/.platformio/packages/framework-arduinopico/libraries/LittleFS/src",
-                    "C:/Users/Dell/Documents/PlatformIO/Projects/Lorawan/Lorawan/.pio/libdeps/rpipicow/ArduinoJson/src",
+                    "C:/Users/Dell/Documents/PlatformIO/Projects/Lorawan_update/Lorawan/Lorawan/.pio/libdeps/rpipicow/ArduinoJson/src",
                     "C:/Users/Dell/.platformio/packages/framework-arduinopico/cores/rp2040",
                     "C:/Users/Dell/.platformio/packages/framework-arduinopico/cores/rp2040/api/deprecated",
                     "C:/Users/Dell/.platformio/packages/framework-arduinopico/cores/rp2040/api/deprecated-avr-comp",
