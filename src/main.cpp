@@ -80,6 +80,8 @@ void setup() {
     }
   }
 
+
+
   // Initialize LoRaWAN
   if (!initializeLoRaWAN()) {
     log_error("FATAL ERROR: LoRaWAN initialization failed");
@@ -100,9 +102,8 @@ void loop() {
   if (WIFI_ENABLED) {
     handleWiFiEvents();
   }
-  
 
-  
+
   // Handle OTA events
   if (OTA_ENABLED) {
     handleOTAEvents();
@@ -124,11 +125,13 @@ void loop() {
     
     // Format data as JSON for dashboard integration
     String jsonData = formatCurrentAsJson(currentVal);
-    
 
-    
 
-    
+    // Publish data via MQTT if enabled
+    if (MQTT_ENABLED && isMQTTConnected()) {
+      publishCurrentData(currentVal);
+    }
+
     // Send data via LoRaWAN
     if (sendLoRaWANPayload(currentVal)) {
       // Listen for downlink commands
@@ -451,6 +454,10 @@ void processDownlinkPayload(String payload) {
         delay(200);
       }
     }
+    else if (payload == "05") {
+      log_info("INTEGRATION TEST command received");
+      runIntegrationTests();
+    }
     else {
       log_format(LOG_WARNING, "Unknown command: %s", payload.c_str());
     }
@@ -648,7 +655,9 @@ void testDownlinkSystem() {
   log_info("To test downlinks:");
   log_info("1. Send '01' from ChirpStack to turn LED ON");
   log_info("2. Send '02' from ChirpStack to turn LED OFF");
-  log_info("3. Send '04' from ChirpStack for LED blink test");
+  log_info("3. Send '03' from ChirpStack for OTA update");
+  log_info("4. Send '04' from ChirpStack for LED blink test");
+  log_info("5. Send '05' from ChirpStack to run integration tests");
 }
 
 // Function to process FUOTA downlink messages (disabled for now)

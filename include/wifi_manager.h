@@ -16,4 +16,15 @@ bool setupWiFi();
 bool connectToWiFi();
 void handleWiFiEvents();
 
-#endif // WIFI_MANAGER_H 
+// MQTT function prototypes
+bool setupMQTT();
+bool connectToMQTT();
+void handleMQTTEvents();
+bool publishCurrentData(float currentValue);
+bool publishStatus(const char* status);
+void processMQTTCommand(String topic, String payload);
+bool isMQTTConnected();
+bool publishTestMessage();
+bool publishDebugInfo(const char* debugInfo);
+
+#endif // WIFI_MANAGER_H

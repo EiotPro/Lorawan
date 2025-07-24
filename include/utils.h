@@ -48,4 +48,35 @@ bool retryOperation(uint8_t errorCode, uint8_t maxRetries);
 // Data formatting
 String formatCurrentAsJson(float currentValue);
 
-#endif // UTILS_H 
+// System monitoring functions
+void printSystemInfo();
+void printMemoryInfo();
+void printFileSystemInfo();
+float getSystemUptime();
+uint32_t getFreeHeap();
+float getCPUTemperature();
+
+// Advanced error handling
+void logSystemError(const char* component, const char* error);
+void createErrorReport();
+bool saveErrorLog(const char* error);
+void clearErrorLog();
+
+// Data processing functions
+float calculateMovingAverage(float newValue, float* buffer, size_t bufferSize, size_t* index);
+bool validateCurrentReading(float current);
+String formatSystemStatus();
+void performSystemHealthCheck();
+
+// Network utilities
+String getWiFiStatusString();
+String getMQTTStatusString();
+String getBLEStatusString();
+
+// Integration test functions
+void runIntegrationTests();
+void testDataProcessing();
+void testErrorHandling();
+void testNetworkStatus();
+
+#endif // UTILS_H

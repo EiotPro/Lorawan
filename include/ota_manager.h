@@ -23,6 +23,11 @@ bool verifyFirmware(uint8_t* buffer, size_t size);
 bool performFlashUpdate();
 void handleOTAEvents();
 uint8_t getOTAStatus();
+uint8_t getOTAProgress();
+bool isOTAInProgress();
+bool cancelOTAUpdate();
+const char* getOTAStatusString();
+void cleanupOTAFiles();
 
 // OTA Update Methods
 #define OTA_METHOD_WIFI 1
