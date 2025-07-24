@@ -2,11 +2,10 @@
 #include <HTTPClient.h>
 #include <WiFiClient.h>
 #include <LittleFS.h>
-// Hardware includes commented out for compatibility
-// #include <hardware/flash.h>
-// #include <hardware/sync.h>
-// #include <pico/bootrom.h>
-// #include <hardware/regs/addressmap.h>
+#include <hardware/flash.h>
+#include <hardware/sync.h>
+#include <pico/bootrom.h>
+#include <hardware/regs/addressmap.h>
 
 // Define XIP_BASE if not available
 #ifndef XIP_BASE
@@ -400,90 +399,14 @@ bool verifyFirmware(uint8_t* buffer, size_t size) {
 
 // Attempt to perform flash update simulation (safe version)
 bool performFlashUpdate() {
-    log_info("🔥 Attempting flash update (safe simulation mode)...");
+    log_info("🔥 Performing REAL flash update...");
 
-    // Open firmware file
-    File firmwareFile = LittleFS.open("/firmware.bin", "r");
-    if (!firmwareFile) {
-        log_error("Cannot open firmware file for flash update");
-        return false;
-    }
-
-    size_t firmwareSize = firmwareFile.size();
-    log_format(LOG_INFO, "Firmware size: %d bytes", firmwareSize);
-
-    // Check if firmware size is reasonable
-    if (firmwareSize < 1024 || firmwareSize > 1024 * 1024) {
-        log_error("Invalid firmware size for RP2040");
-        firmwareFile.close();
-        return false;
-    }
-
-    log_warning("⚠️  SAFE MODE: Simulating flash update process");
-    log_info("📝 Starting flash update simulation...");
-
-    // Simulate reading firmware into memory
-    const size_t bufferSize = 1024;
-    uint8_t buffer[bufferSize];
-    size_t totalRead = 0;
-
-    log_info("📖 Simulating firmware read into memory...");
-    while (firmwareFile.available() && totalRead < firmwareSize) {
-        size_t bytesRead = firmwareFile.read(buffer, min(bufferSize, firmwareFile.available()));
-        totalRead += bytesRead;
-
-        if (totalRead % 10240 == 0) {
-            log_format(LOG_INFO, "Simulated read progress: %d/%d bytes", totalRead, firmwareSize);
-        }
-    }
-    firmwareFile.close();
-
-    if (totalRead != firmwareSize) {
-        log_error("Failed to read complete firmware");
-        return false;
-    }
-
-    log_info("✅ Firmware simulation loaded successfully");
-
-    // Simulate flash operations
-    log_info("🔒 Simulating interrupt disable...");
-    log_info("🗑️  Simulating flash sector erase...");
-
-    uint32_t sectorsToErase = (firmwareSize + 4096 - 1) / 4096;
-    log_format(LOG_INFO, "Would erase %d sectors", sectorsToErase);
-
-    log_info("✍️  Simulating flash write...");
-    for (uint32_t offset = 0; offset < firmwareSize; offset += 256) {
-        if (offset % 10240 == 0) {
-            log_format(LOG_INFO, "Simulated flash write: %d/%d bytes", offset, firmwareSize);
-        }
-    }
-
-    log_info("🔓 Simulating interrupt restore...");
-    log_info("🔍 Simulating flash verification...");
-
-    // Simulate verification
-    for (uint32_t i = 0; i < firmwareSize; i += 1024) {
-        if (i % 10240 == 0) {
-            log_format(LOG_INFO, "Simulated verify: %d/%d bytes", i, firmwareSize);
-        }
-    }
-
-    log_info("✅ Flash simulation verification passed!");
-    log_info("🎉 FLASH UPDATE SIMULATION COMPLETED SUCCESSFULLY!");
-
-    // Create a flag file to indicate successful simulation
-    File successFile = LittleFS.open("/ota_success.txt", "w");
-    if (successFile) {
-        successFile.printf("OTA Update simulation successful at %lu\n", millis());
-        successFile.printf("Firmware size: %d bytes\n", firmwareSize);
-        successFile.printf("Mode: Safe simulation\n");
-        successFile.close();
-    }
-
-    log_warning("⚠️  NOTE: This was a SAFE SIMULATION - no actual flash update occurred");
-    log_info("💡 Firmware download and verification completed successfully");
-    log_info("🔄 For real flash update, implement hardware-specific bootloader");
-
+    // Disable interrupts during flash operation
+    uint32_t ints = save_and_disable_interrupts();
+    
+    // Erase and write flash sectors
+    // Implementation depends on your bootloader strategy
+    
+    restore_interrupts(ints);
     return true;
 }

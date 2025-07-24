@@ -44,7 +44,7 @@ void setup() {
   analogReadResolution(12); // Set ADC resolution to 12-bit
   
   log_info("==========================================================");
-  log_info("WCS6800 Current Sensor LoRaWAN Monitor");
+  log_info("WCS6800 Current LoRaWAN Monitor");
   log_format(LOG_INFO, "Device: %s", DEVICE_NAME);
   log_format(LOG_INFO, "Version: %s", DEVICE_VERSION);
   log_format(LOG_INFO, "Build: %s", BUILD_TIMESTAMP);
